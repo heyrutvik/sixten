@@ -157,13 +157,13 @@ logDefMeta v s e = whenVerbose v $ do
 type FreeBindVar meta = FreeVar Plicitness (Expr meta)
 
 instantiatedMetaType
-  :: (MonadContext (FreeBindVar MetaVar) m, MonadError Error m, MonadVIX m, MonadIO m)
+  :: (MonadContext (FreeBindVar MetaVar) m, MonadError Error m, MonadVIX m, MonadIO m, MonadLog m)
   => MetaVar
   -> m (Vector FreeV, Expr MetaVar (FreeBindVar MetaVar))
 instantiatedMetaType m = instantiatedMetaType' (metaArity m) m
 
 instantiatedMetaType'
-  :: (MonadContext (FreeBindVar MetaVar) m, MonadError Error m, MonadVIX m, MonadIO m)
+  :: (MonadContext (FreeBindVar MetaVar) m, MonadError Error m, MonadVIX m, MonadIO m, MonadLog m)
   => Int
   -> MetaVar
   -> m (Vector FreeV, Expr MetaVar (FreeBindVar MetaVar))

@@ -1,4 +1,4 @@
-{-# LANGUAGE DefaultSignatures, FlexibleInstances, FunctionalDependencies, GADTs, MultiParamTypeClasses, UndecidableInstances #-}
+{-# LANGUAGE DefaultSignatures, FlexibleContexts, FlexibleInstances, FunctionalDependencies, GADTs, MultiParamTypeClasses, OverloadedStrings, UndecidableInstances #-}
 module MonadContext where
 
 import Protolude
@@ -6,12 +6,15 @@ import Protolude
 import Control.Monad.Except
 import Control.Monad.Trans.Identity
 import Control.Monad.Writer
+import Data.Vector(Vector)
 
 import MonadFresh
 import MonadLog
 import Syntax
-import Util.Tsil
+import Syntax.Telescope
 import TypedFreeVar
+import Util
+import Util.Tsil
 
 class Monad m => MonadContext v m | m -> v where
   inUpdatedContext :: (Tsil v -> Tsil v) -> m a -> m a
@@ -39,6 +42,16 @@ inContext h p t k = do
   v <- freeVar h p t
   logVerbose 20 $ "forall: " <> shower (varId v)
   withVar v $ k v
+
+inTeleContext
+  :: (MonadContext (FreeVar d e) m, MonadFresh m, MonadLog m)
+  => Telescope d e v
+  -> (Vector (FreeVar d e) -> m a)
+  -> m a
+inTeleContext tele k = do
+  vs <- forTeleWithPrefixM tele $ \h p s vs ->
+    freeVar h p $ instantiateTele pure vs s
+  k vs
 
 -------------------------------------------------------------------------------
 -- mtl instances
