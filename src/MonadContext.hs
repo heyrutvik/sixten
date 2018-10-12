@@ -7,7 +7,11 @@ import Control.Monad.Except
 import Control.Monad.Trans.Identity
 import Control.Monad.Writer
 
+import MonadFresh
+import MonadLog
+import Syntax
 import Util.Tsil
+import TypedFreeVar
 
 class Monad m => MonadContext v m | m -> v where
   inUpdatedContext :: (Tsil v -> Tsil v) -> m a -> m a
@@ -23,6 +27,18 @@ withVar v = inUpdatedContext $ \vs -> Snoc vs v
 
 withVars :: (MonadContext v m, Foldable t) => t v -> m a -> m a
 withVars vs m = foldr withVar m vs
+
+inContext
+  :: (MonadContext (FreeVar d e) m, MonadFresh m, MonadLog m)
+  => NameHint
+  -> d
+  -> e (FreeVar d e)
+  -> (FreeVar d e -> m a)
+  -> m a
+inContext h p t k = do
+  v <- freeVar h p t
+  logVerbose 20 $ "forall: " <> shower (varId v)
+  withVar v $ k v
 
 -------------------------------------------------------------------------------
 -- mtl instances

@@ -19,6 +19,7 @@ import qualified LLVM.IRBuilder as IRBuilder
 
 import Backend.Target as Target
 import Error
+import MonadContext
 import MonadFresh
 import MonadLog
 import Processor.Result
@@ -145,18 +146,6 @@ logShow :: (MonadLog m, MonadVIX m, Show a) => Int -> String -> a -> m ()
 logShow v s x = whenVerbose v $ do
   i <- liftVIX $ gets vixIndent
   MonadLog.log $ mconcat (replicate i "| ") <> "--" <> fromString s <> ": " <> fromString (show x)
-
--- | Like freeVar, but with logging
-forall
-  :: (MonadFresh m, MonadVIX m, MonadLog m)
-  => NameHint
-  -> d
-  -> e (FreeVar d e)
-  -> m (FreeVar d e)
-forall h p t = do
-  v <- freeVar h p t
-  logVerbose 20 $ "forall: " <> shower (varId v)
-  return v
 
 logFreeVar
   :: (Functor e, Functor f, Foldable f, Pretty (f Doc), Pretty (e Doc), MonadVIX m, MonadLog m)
