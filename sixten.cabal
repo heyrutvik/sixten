@@ -53,6 +53,7 @@ executable sixten
                        Command.LanguageServer.Hover
                        Command.Run
                        Command.Test
+                       Driver.Query
                        Elaboration.Constraint
                        Elaboration.Constructor
                        Elaboration.Equal
@@ -151,6 +152,7 @@ executable sixten
                        prettyprinter-ansi-terminal,
                        process,
                        protolude,
+                       rock,
                        split,
                        stm,
                        temporary,

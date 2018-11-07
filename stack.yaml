@@ -44,6 +44,7 @@ extra-deps:
 - haskell-lsp-types-0.8.0.0
 - multiset-0.3.4
 - parsix-0.1.0.2
+- ../rock
 
 # Override default flag values for local packages and extra-deps
 flags: {}
