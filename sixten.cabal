@@ -124,6 +124,7 @@ executable sixten
                        Util.TopoSort
                        Util.Tsil
                        VIX
+                       VIX2
   build-depends:
                        List,
                        aeson,
@@ -139,6 +140,7 @@ executable sixten
                        hashable,
                        haskell-lsp,
                        haskell-lsp-types,
+                       lens,
                        lifted-base,
                        llvm-hs-pretty,
                        llvm-hs-pure,
