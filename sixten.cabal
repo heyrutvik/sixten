@@ -132,6 +132,7 @@ executable sixten
                        bytestring,
                        containers,
                        data-default,
+                       dependent-map,
                        deriving-compat,
                        directory,
                        filepath,
