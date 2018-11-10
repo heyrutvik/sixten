@@ -21,15 +21,16 @@ import qualified Syntax.Core as Core
 import qualified Syntax.Pre.Definition as Pre
 import qualified Syntax.Pre.Scoped as Pre
 import qualified Syntax.Pre.Unscoped as Unscoped
+import Backend.Target
 
 type ModuleDefinitions = HashMap QName (SourceLoc, Unscoped.TopLevelDefinition)
 type ResolvedModule = HashMap QName [(QName, SourceLoc, Closed (Pre.Definition Pre.Expr))]
 type TypeCheckedGroup = HashMap QName (SourceLoc, ClosedDefinition Core.Expr, Biclosed Core.Expr)
 
 data Query a where
-  -- Frontend
   Files :: Query [FilePath]
   File :: FilePath -> Query Text
+  Target :: Query Target
   ParsedModule :: FilePath -> Query (ModuleHeader, [(SourceLoc, Unscoped.TopLevelDefinition)])
   ModuleHeaders :: Query (HashMap FilePath ModuleHeader)
   ResolvedModule :: ModuleName -> Query ResolvedModule
@@ -41,10 +42,11 @@ data Query a where
 noError :: (Monoid w, Functor f) => f a -> f (a, w)
 noError = fmap (, mempty)
 
-rules :: [FilePath] -> GenRules (Writer [Error] Query) Query
-rules inputFiles (Writer query) = case query of
+rules :: [FilePath] -> Target -> GenRules (Writer [Error] Query) Query
+rules inputFiles target (Writer query) = case query of
   Files -> Input $ noError $ return inputFiles
   File file -> Input $ noError $ readFile file
+  Driver.Query.Target -> Input $ noError $ return target
   ParsedModule file -> Task $ do
     text <- fetch $ File file
     case Parse.parseText Parse.modul text file of
