@@ -10,14 +10,10 @@ module VIX2 where
 import Protolude
 
 import Control.Lens
-import Control.Lens.Combinators
-import Control.Lens.TH
-import Data.IORef
 
 import Driver.Query
 import Error hiding (MonadReport)
 import Rock
-import Util.Tsil
 
 data LogEnv = LogEnv
   { _verbosity :: !Int
