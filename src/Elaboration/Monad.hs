@@ -1,17 +1,25 @@
-{-# LANGUAGE FlexibleInstances, GeneralizedNewtypeDeriving, MultiParamTypeClasses, OverloadedStrings, TypeSynonymInstances #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE FunctionalDependencies #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE TypeSynonymInstances #-}
 module Elaboration.Monad where
 
 import Protolude
 
+import Control.Lens.TH
 import Control.Monad.Except
 import Control.Monad.Fail
 import qualified Data.Vector as Vector
+import Rock
 
 import qualified Builtin.Names as Builtin
+import Driver.Query
 import Elaboration.MetaVar
 import MonadContext
 import MonadFresh
-import MonadLog
 import Syntax
 import qualified Syntax.Core as Core
 import qualified Syntax.Pre.Scoped as Pre
@@ -37,24 +45,36 @@ shouldInst p (InstUntil p') | p == p' = False
 shouldInst _ _ = True
 
 data ElabEnv = ElabEnv
-  { localVariables :: Tsil FreeV
-  , elabTouchables :: !(MetaVar -> Bool)
+  { _localVariables :: Tsil FreeV
+  , _elabTouchables :: !(MetaVar -> Bool)
+  , _vixEnv :: !VIX.Env
   }
 
-newtype Elaborate a = Elaborate (ReaderT ElabEnv VIX a)
-  deriving (Functor, Applicative, Monad, MonadIO, MonadFail, MonadFix, MonadError Error, MonadFresh, MonadReport, MonadLog, MonadVIX)
+makeFieldsNoPrefix ''ElabEnv
+
+instance HasLogEnv ElabEnv LogEnv where
+  logEnv = vixEnv.logEnv
+
+instance HasReportEnv ElabEnv ReportEnv where
+  reportEnv = vixEnv.reportEnv
+
+instance HasFreshEnv ElabEnv FreshEnv where
+  freshEnv = vixEnv.freshEnv
+
+type Elaborate = ReaderT ElabEnv (Task Query)
 
 runElaborate :: Elaborate a -> VIX a
-runElaborate (Elaborate i) = runReaderT i ElabEnv
-  { localVariables = mempty
-  , elabTouchables = const True
+runElaborate = withReader $ \env -> ElabEnv
+  { _localVariables = mempty
+  , _elabTouchables = const True
+  , _vixEnv = env
   }
 
 instance MonadContext FreeV Elaborate where
-  localVars = Elaborate $ asks localVariables
+  localVars = view localVariables
 
-  inUpdatedContext f (Elaborate m) = Elaborate $ do
-    vs <- asks localVariables
+  inUpdatedContext f (Elaborate m) = do
+    vs <- view localVariables
     let vs' = f vs
     logShow 30 "local variable scope" (varId <$> toList vs')
     indentLog $

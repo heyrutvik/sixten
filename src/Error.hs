@@ -95,23 +95,3 @@ instance Pretty Error where
 
 printError :: Error -> IO ()
 printError = putDoc . pretty
-
--------------------------------------------------------------------------------
--- Report class
-class Monad m => MonadReport m where
-  report :: Error -> m ()
-
-  default report
-    :: (MonadTrans t, MonadReport m1, m ~ t m1)
-    => Error
-    -> m ()
-  report = lift . report
-
--------------------------------------------------------------------------------
--- mtl instances
--------------------------------------------------------------------------------
-instance MonadReport m => MonadReport (ReaderT r m)
-instance (Monoid w, MonadReport m) => MonadReport (WriterT w m)
-instance MonadReport m => MonadReport (StateT s m)
-instance MonadReport m => MonadReport (IdentityT m)
-instance (Monoid w, MonadReport m) => MonadReport (RWST r w s m)

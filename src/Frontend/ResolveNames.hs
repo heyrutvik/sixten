@@ -11,8 +11,10 @@ import Data.HashSet(HashSet)
 import qualified Data.HashSet as HashSet
 import qualified Data.Text.Prettyprint.Doc as PP
 import qualified Data.Vector as Vector
+import Rock
 
 import qualified Builtin.Names as Builtin
+import Driver.Query
 import Pretty
 import Syntax
 import qualified Syntax.Pre.Literal as Literal
@@ -23,7 +25,7 @@ import Util
 import Util.MultiHashMap(MultiHashMap)
 import qualified Util.MultiHashMap as MultiHashMap
 import Util.TopoSort
-import VIX hiding (instances)
+import VIX hiding (Env)
 
 newtype Env = Env
   { scopeConstrs :: PreName -> HashSet QConstr
@@ -139,16 +141,15 @@ instances
   -> VIX (MultiHashMap QName QName)
 instances defs = fmap (MultiHashMap.fromList . concat) $ forM defs $ \(name, (_, def), _) -> case def of
   Scoped.InstanceDefinition (Scoped.InstanceDef typ _) -> do
-    c <- getClass typ
-    return [(c, name)]
+    cs <- getClass typ
+    return [(c, name) | c <- cs]
   _ -> return mempty
 
 importedAliases
   :: Import
   -> VIX (MultiHashMap PreName QConstr, MultiHashMap PreName QName)
 importedAliases (Import modName asName exposed) = do
-  otherConstrs <- liftVIX $ gets vixModuleConstrs
-  otherNames <- liftVIX $ gets vixModuleNames
+  (otherNames, otherConstrs) <- fetch $ ModuleExports modName
   let
     constrs
       = MultiHashMap.fromList
@@ -156,15 +157,14 @@ importedAliases (Import modName asName exposed) = do
       [ [ (k, c)
         , (fromName (qnameName $ qconstrTypeName c) <> "." <> k, c)
         ]
-      | c <- HashSet.toList $ MultiHashMap.lookup modName otherConstrs
+      | c <- HashSet.toList otherConstrs
       , let k = fromConstr $ qconstrConstr c
       ]
 
     names
       = MultiHashMap.fromList
       $ fmap (\n -> (fromName $ qnameName n :: PreName, n))
-      $ HashSet.toList
-      $ MultiHashMap.lookup modName otherNames
+      $ HashSet.toList otherNames
 
     exposedConstrs = case exposed of
       AllExposed -> constrs
@@ -274,7 +274,7 @@ resolveExpr expr = case expr of
   Unscoped.Wildcard -> return Scoped.Wildcard
   Unscoped.SourceLoc loc e -> Scoped.SourceLoc loc <$> resolveExpr e
   Unscoped.Error e -> do
-    report e
+    lift $ report e
     return
       $ Scoped.App
         (global Builtin.StaticErrorName)
@@ -304,15 +304,17 @@ resolvePat pat = case pat of
 
 getClass
   :: Scoped.Expr v
-  -> VIX QName
+  -> VIX [QName]
 getClass (Scoped.Pi _ _ s) = getClass $ fromScope s
 getClass (Scoped.SourceLoc loc e) = located loc $ getClass e
-getClass (Scoped.appsView -> (Scoped.Global g, _)) = return g
-getClass _ = throwInvalidInstance
+getClass (Scoped.appsView -> (Scoped.Global g, _)) = return [g]
+getClass _ = do
+  reportInvalidInstance
+  return []
 
-throwInvalidInstance :: VIX a
-throwInvalidInstance
-  = throwLocated
+reportInvalidInstance :: VIX ()
+reportInvalidInstance
+  = reportLocated
   $ PP.vcat
   [ "Invalid instance"
   , "Instance types must return a class"

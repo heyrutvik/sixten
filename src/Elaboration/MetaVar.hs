@@ -3,9 +3,10 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Elaboration.MetaVar where
 
-import Protolude
 import Prelude(showsPrec, showString, showChar, showParen)
+import Protolude
 
+import Control.Lens
 import Data.Bitraversable
 import Data.IORef
 import Data.String
@@ -16,7 +17,6 @@ import qualified Data.Vector as Vector
 import Error
 import MonadContext
 import MonadFresh
-import MonadLog
 import Syntax
 import Syntax.Core
 import TypedFreeVar
@@ -58,7 +58,7 @@ instance Show MetaVar where
     showString "<Ref>"
 
 explicitExists
-  :: (MonadVIX m, MonadLog m, MonadIO m)
+  :: (MonadLog env m, MonadIO m, MonadFresh m)
   => NameHint
   -> Plicitness
   -> Closed (Expr MetaVar)
@@ -100,7 +100,7 @@ instance Pretty a => Pretty (WithVar a) where
   prettyM (WithVar _ x) = prettyM x
 
 prettyMetaVar
-  :: (MonadIO m, MonadVIX m)
+  :: MonadLog env m
   => MetaVar
   -> m Doc
 prettyMetaVar x = do
@@ -109,7 +109,7 @@ prettyMetaVar x = do
   case msol of
     Nothing -> return name
     Just sol -> do
-      v <- liftVIX $ gets vixVerbosity
+      v <- view $ logEnv.verbosity
       sol' <- prettyMeta (open sol :: Expr MetaVar Doc)
       if v <= 30 then
         return $ PP.parens sol'
@@ -117,7 +117,7 @@ prettyMetaVar x = do
         return $ PP.parens $ name PP.<+> "=" PP.<+> sol'
 
 prettyMeta
-  :: (Pretty v, MonadIO m, MonadVIX m)
+  :: (Pretty v, MonadLog env m)
   => Expr MetaVar v
   -> m Doc
 prettyMeta e = do
@@ -125,7 +125,7 @@ prettyMeta e = do
   return $ pretty e'
 
 prettyDefMeta
-  :: (Pretty v, MonadIO m, MonadVIX m)
+  :: (Pretty v, MonadLog env m)
   => Definition (Expr MetaVar) v
   -> m Doc
 prettyDefMeta e = do
@@ -133,37 +133,35 @@ prettyDefMeta e = do
   return $ pretty e'
 
 logMeta
-  :: (MonadLog m, Pretty v, MonadIO m, MonadVIX m)
+  :: (MonadLog env m, Pretty v, MonadIO m)
   => Int
   -> String
   -> Expr MetaVar v
   -> m ()
 logMeta v s e = whenVerbose v $ do
-  i <- liftVIX $ gets vixIndent
   d <- prettyMeta e
-  MonadLog.log $ mconcat (replicate i "| ") <> "--" <> fromString s <> ": " <> showWide d
+  VIX.log $ "--" <> fromString s <> ": " <> showWide d
 
 logDefMeta
-  :: (MonadIO m, Pretty v, MonadLog m, MonadVIX m)
+  :: (MonadLog env m, Pretty v, MonadIO m)
   => Int
   -> String
   -> Definition (Expr MetaVar) v
   -> m ()
 logDefMeta v s e = whenVerbose v $ do
-  i <- liftVIX $ gets vixIndent
   d <- prettyDefMeta e
-  MonadLog.log $ mconcat (replicate i "| ") <> "--" <> fromString s <> ": " <> showWide d
+  VIX.log $ "--" <> fromString s <> ": " <> showWide d
 
 type FreeBindVar meta = FreeVar Plicitness (Expr meta)
 
 instantiatedMetaType
-  :: (MonadError Error m, MonadVIX m, MonadLog m)
+  :: (MonadLog env m, MonadFresh m)
   => MetaVar
   -> m (Vector FreeV, Expr MetaVar (FreeBindVar MetaVar))
 instantiatedMetaType m = instantiatedMetaType' (metaArity m) m
 
 instantiatedMetaType'
-  :: (MonadError Error m, MonadVIX m, MonadLog m)
+  :: (MonadLog env m, MonadFresh m)
   => Int
   -> MetaVar
   -> m (Vector FreeV, Expr MetaVar (FreeBindVar MetaVar))
@@ -173,13 +171,13 @@ instantiatedMetaType' arity m = go mempty arity (open $ metaType m)
     go vs n (Pi h a t s) = do
       v <- forall h a t
       go (v:vs) (n - 1) (instantiate1 (pure v) s)
-    go _ _ _ = internalError "instantiatedMetaType'"
+    go _ _ _ = panic "instantiatedMetaType'"
 
-type MonadBindMetas meta' m = (MonadFresh m, MonadContext (FreeBindVar meta') m, MonadVIX m, MonadLog m, MonadIO m)
+type MonadBindMetas env meta' m = (MonadFresh m, MonadContext (FreeBindVar meta') m, MonadLog env m, MonadIO m)
 
 -- TODO move?
 bindDefMetas
-  :: MonadBindMetas meta' m
+  :: MonadBindMetas env meta' m
   => (meta -> Vector (Plicitness, Expr meta (FreeBindVar meta')) -> m (Expr meta' (FreeBindVar meta')))
   -> Definition (Expr meta) (FreeBindVar meta')
   -> m (Definition (Expr meta') (FreeBindVar meta'))
@@ -188,7 +186,7 @@ bindDefMetas f def = case def of
   DataDefinition d rep -> DataDefinition <$> bindDataDefMetas f d <*> bindMetas f rep
 
 bindDefMetas'
-  :: MonadBindMetas meta' m
+  :: MonadBindMetas env meta' m
   => (meta -> Vector (Plicitness, Expr meta' (FreeBindVar meta')) -> m (Expr meta' (FreeBindVar meta')))
   -> Definition (Expr meta) (FreeBindVar meta')
   -> m (Definition (Expr meta') (FreeBindVar meta'))
@@ -197,7 +195,7 @@ bindDefMetas' f = bindDefMetas $ \m es -> do
   f m es'
 
 bindDataDefMetas
-  :: MonadBindMetas meta' m
+  :: MonadBindMetas env meta' m
   => (meta -> Vector (Plicitness, Expr meta (FreeBindVar meta')) -> m (Expr meta' (FreeBindVar meta')))
   -> DataDef (Expr meta) (FreeBindVar meta')
   -> m (DataDef (Expr meta') (FreeBindVar meta'))
@@ -216,7 +214,7 @@ bindDataDefMetas f (DataDef ps cs) = do
     return $ dataDef vs cs'
 
 bindMetas
-  :: MonadBindMetas meta' m
+  :: MonadBindMetas env meta' m
   => (meta -> Vector (Plicitness, Expr meta (FreeBindVar meta')) -> m (Expr meta' (FreeBindVar meta')))
   -> Expr meta (FreeBindVar meta')
   -> m (Expr meta' (FreeBindVar meta'))
@@ -253,7 +251,7 @@ bindMetas f expr = case expr of
 
 
 bindMetas'
-  :: MonadBindMetas meta' m
+  :: MonadBindMetas env meta' m
   => (meta -> Vector (Plicitness, Expr meta' (FreeBindVar meta')) -> m (Expr meta' (FreeBindVar meta')))
   -> Expr meta (FreeBindVar meta')
   -> m (Expr meta' (FreeBindVar meta'))
@@ -262,7 +260,7 @@ bindMetas' f = bindMetas $ \m es -> do
   f m es'
 
 bindBranchMetas
-  :: MonadBindMetas meta' m
+  :: MonadBindMetas env meta' m
   => (meta -> Vector (Plicitness, Expr meta (FreeBindVar meta')) -> m (Expr meta' (FreeBindVar meta')))
   -> Branches Plicitness (Expr meta) (FreeBindVar meta')
   -> m (Branches Plicitness (Expr meta') (FreeBindVar meta'))

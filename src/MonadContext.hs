@@ -1,7 +1,18 @@
-{-# LANGUAGE DefaultSignatures, FlexibleInstances, FunctionalDependencies, GADTs, MultiParamTypeClasses, UndecidableInstances #-}
+{-# LANGUAGE ConstraintKinds #-}
+{-# LANGUAGE DefaultSignatures #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE FunctionalDependencies #-}
+{-# LANGUAGE GADTs #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE UndecidableInstances #-}
 module MonadContext where
 
 import Protolude
+
+import Control.Lens
+import Control.Lens.TH
 
 import Control.Monad.Except
 import Control.Monad.ListT
@@ -10,33 +21,19 @@ import Control.Monad.Writer
 
 import Util.Tsil
 
-class Monad m => MonadContext v m | m -> v where
-  inUpdatedContext :: (Tsil v -> Tsil v) -> m a -> m a
-  localVars :: m (Tsil v)
+newtype ContextEnv v = ContextEnv
+  { _localVars :: Tsil v
+  }
 
-  default localVars
-    :: (MonadTrans t, MonadContext v m1, m ~ t m1)
-    => m (Tsil v)
-  localVars = lift localVars
+makeFieldsNoPrefix ''ContextEnv
 
-withVar :: MonadContext v m => v -> m a -> m a
+type MonadContext v env m = (MonadReader env m, HasLocalVars env (Tsil v))
+
+inUpdatedContext :: MonadContext v env m => (Tsil v -> Tsil v) -> m a -> m a
+inUpdatedContext = local . over localVars
+
+withVar :: MonadContext v env m => v -> m a -> m a
 withVar v = inUpdatedContext $ \vs -> Snoc vs v
 
-withVars :: (MonadContext v m, Foldable t) => t v -> m a -> m a
+withVars :: (MonadContext v env m, Foldable t) => t v -> m a -> m a
 withVars vs m = foldr withVar m vs
-
--------------------------------------------------------------------------------
--- mtl instances
--------------------------------------------------------------------------------
-instance MonadContext v m => MonadContext v (ReaderT r m) where
-  inUpdatedContext f (ReaderT m) = ReaderT $ inUpdatedContext f . m
-instance (Monoid w, MonadContext v m) => MonadContext v (WriterT w m) where
-  inUpdatedContext f (WriterT m) = WriterT $ inUpdatedContext f m
-instance MonadContext v m => MonadContext v (StateT s m) where
-  inUpdatedContext f (StateT m) = StateT $ inUpdatedContext f . m
-instance MonadContext v m => MonadContext v (IdentityT m) where
-  inUpdatedContext f (IdentityT m) = IdentityT $ inUpdatedContext f m
-instance MonadContext v m => MonadContext v (ExceptT e m) where
-  inUpdatedContext f (ExceptT m) = ExceptT $ inUpdatedContext f m
-instance MonadContext v m => MonadContext v (ListT m) where
-  inUpdatedContext f (ListT m) = ListT $ inUpdatedContext f m

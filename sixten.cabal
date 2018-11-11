@@ -54,6 +54,7 @@ executable sixten
                        Command.Run
                        Command.Test
                        Driver.Query
+                       Driver.Rules
                        Elaboration.Constraint
                        Elaboration.Constructor
                        Elaboration.Equal
@@ -124,7 +125,6 @@ executable sixten
                        Util.TopoSort
                        Util.Tsil
                        VIX
-                       VIX2
   build-depends:
                        List,
                        aeson,
