@@ -13,7 +13,7 @@ import qualified Builtin.Names as Builtin
 import qualified Elaboration.Normalise as Normalise
 import qualified Elaboration.TypeOf as TypeOf
 import MonadContext
-import MonadFresh
+import Fresh
 import Syntax
 import qualified Syntax.Core as Core
 import Syntax.Sized.Anno

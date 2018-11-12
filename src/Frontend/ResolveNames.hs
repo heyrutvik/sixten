@@ -15,6 +15,7 @@ import Rock
 
 import qualified Builtin.Names as Builtin
 import Driver.Query
+import Effect
 import Pretty
 import Syntax
 import qualified Syntax.Pre.Literal as Literal

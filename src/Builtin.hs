@@ -10,7 +10,7 @@ import qualified Data.Vector as Vector
 
 import Backend.Target(Target)
 import Builtin.Names
-import MonadFresh
+import Effect
 import Syntax
 import Syntax.Core as Core
 import Syntax.Sized.Anno

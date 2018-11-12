@@ -4,7 +4,7 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE FunctionalDependencies #-}
-module MonadFresh where
+module Effect.Fresh where
 
 import Protolude
 
@@ -39,7 +39,10 @@ newtype FreshEnv = FreshEnv
   { _freshVar :: MVar Int
   }
 
-makeFieldsNoPrefix ''FreshEnv
+emptyFreshEnv :: MonadIO m => m FreshEnv
+emptyFreshEnv = FreshEnv <$> liftIO (newMVar 0)
+
+makeLenses ''FreshEnv
 
 class HasFreshEnv env where
   freshEnv :: Lens' env FreshEnv

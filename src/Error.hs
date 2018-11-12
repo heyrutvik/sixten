@@ -3,10 +3,6 @@ module Error where
 
 import Protolude hiding (TypeError)
 
-import Control.Monad.Reader
-import Control.Monad.RWS
-import Control.Monad.Trans.Identity
-import Control.Monad.Writer
 import Data.Text(Text)
 import Data.Text.Prettyprint.Doc(line)
 import qualified Data.Text.Prettyprint.Doc as PP

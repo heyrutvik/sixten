@@ -55,6 +55,11 @@ executable sixten
                        Command.Test
                        Driver.Query
                        Driver.Rules
+                       Effect
+                       Effect.Context
+                       Effect.Fresh
+                       Effect.Log
+                       Effect.Report
                        Elaboration.Constraint
                        Elaboration.Constructor
                        Elaboration.Equal
@@ -79,9 +84,6 @@ executable sixten
                        Frontend.DupCheck
                        Frontend.Parse
                        Frontend.ResolveNames
-                       MonadContext
-                       MonadFresh
-                       MonadLog
                        Paths_sixten
                        Pretty
                        Processor.File

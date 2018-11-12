@@ -10,7 +10,7 @@ import qualified Data.HashSet as HashSet
 import Data.Vector(Vector)
 import qualified Data.Vector as Vector
 
-import MonadFresh
+import Fresh
 import MonadLog
 import Syntax
 import Syntax.Sized.Anno

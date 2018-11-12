@@ -16,7 +16,7 @@ import Elaboration.TypeCheck.Data
 import Elaboration.TypeCheck.Expr
 import Elaboration.Unify
 import MonadContext
-import MonadFresh
+import Fresh
 import Syntax
 import qualified Syntax.Core as Core
 import qualified Syntax.Pre.Scoped as Pre

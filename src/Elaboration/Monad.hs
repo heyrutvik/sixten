@@ -9,17 +9,17 @@ module Elaboration.Monad where
 
 import Protolude
 
-import Control.Lens.TH
+import Control.Lens
 import Control.Monad.Except
 import Control.Monad.Fail
+import Control.Monad.Reader
 import qualified Data.Vector as Vector
 import Rock
 
 import qualified Builtin.Names as Builtin
 import Driver.Query
+import Effect
 import Elaboration.MetaVar
-import MonadContext
-import MonadFresh
 import Syntax
 import qualified Syntax.Core as Core
 import qualified Syntax.Pre.Scoped as Pre
@@ -45,42 +45,33 @@ shouldInst p (InstUntil p') | p == p' = False
 shouldInst _ _ = True
 
 data ElabEnv = ElabEnv
-  { _localVariables :: Tsil FreeV
+  { _contextEnv :: !(ContextEnv FreeV)
   , _elabTouchables :: !(MetaVar -> Bool)
   , _vixEnv :: !VIX.Env
   }
 
-makeFieldsNoPrefix ''ElabEnv
+makeLenses ''ElabEnv
 
-instance HasLogEnv ElabEnv LogEnv where
+instance HasLogEnv ElabEnv where
   logEnv = vixEnv.logEnv
 
-instance HasReportEnv ElabEnv ReportEnv where
+instance HasReportEnv ElabEnv where
   reportEnv = vixEnv.reportEnv
 
-instance HasFreshEnv ElabEnv FreshEnv where
+instance HasFreshEnv ElabEnv where
   freshEnv = vixEnv.freshEnv
+
+instance HasContextEnv FreeV ElabEnv where
+  contextEnv = Elaboration.Monad.contextEnv
 
 type Elaborate = ReaderT ElabEnv (Task Query)
 
 runElaborate :: Elaborate a -> VIX a
-runElaborate = withReader $ \env -> ElabEnv
-  { _localVariables = mempty
+runElaborate = withReaderT $ \env -> ElabEnv
+  { _contextEnv = emptyContextEnv
   , _elabTouchables = const True
   , _vixEnv = env
   }
-
-instance MonadContext FreeV Elaborate where
-  localVars = view localVariables
-
-  inUpdatedContext f (Elaborate m) = do
-    vs <- view localVariables
-    let vs' = f vs
-    logShow 30 "local variable scope" (varId <$> toList vs')
-    indentLog $
-      local
-        (\env -> env { localVariables = vs' })
-        m
 
 exists
   :: NameHint
@@ -88,11 +79,11 @@ exists
   -> CoreM
   -> Elaborate CoreM
 exists hint d typ = do
-  locals <- toVector . Tsil.filter (isNothing . varValue) <$> localVars
+  locals <- toVector . Tsil.filter (isNothing . varValue) <$> getLocalVars
   let typ' = Core.pis locals typ
   logMeta 30 "exists typ" typ
   let typ'' = close (panic "exists not closed") typ'
-  loc <- currentLocation
+  loc <- getCurrentLocation
   v <- explicitExists hint d typ'' (Vector.length locals) loc
   return $ Core.Meta v $ (\fv -> (varData fv, pure fv)) <$> locals
 
@@ -102,9 +93,9 @@ existsType
 existsType n = exists n Explicit Builtin.Type
 
 getTouchable :: Elaborate (MetaVar -> Bool)
-getTouchable = Elaborate $ asks elabTouchables
+getTouchable = view elabTouchables
 
 untouchable :: Elaborate a -> Elaborate a
-untouchable (Elaborate i) = do
+untouchable i = do
   v <- fresh
-  Elaborate $ local (\s -> s { elabTouchables = \m -> elabTouchables s m && metaId m > v }) i
+  local (over elabTouchables $ \t m -> t m && metaId m > v) i

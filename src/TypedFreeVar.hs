@@ -11,7 +11,7 @@ import qualified Data.HashSet as HashSet
 import qualified Data.Text as Text
 import Data.Vector(Vector)
 
-import MonadFresh
+import Effect
 import Pretty
 import Syntax.Name
 import Syntax.NameHint
@@ -62,6 +62,18 @@ freeVar h d t = do
   i <- fresh
   return $ FreeVar i h d Nothing t
 
+-- | Like freeVar, but with logging. TODO merge with freeVar?
+forall
+  :: (MonadFresh m, MonadLog m)
+  => NameHint
+  -> d
+  -> e (FreeVar d e)
+  -> m (FreeVar d e)
+forall h p t = do
+  v <- freeVar h p t
+  logVerbose 20 $ "forall: " <> shower (varId v)
+  return v
+
 letVar
   :: MonadFresh m
   => NameHint
@@ -84,6 +96,16 @@ showFreeVar x = do
     <> if null shownVars
       then mempty
       else ", free vars: " <> pretty shownVars
+
+logFreeVar
+  :: (Functor e, Functor f, Foldable f, Pretty (f Doc), Pretty (e Doc), MonadLog m)
+  => Int
+  -> Text
+  -> f (FreeVar d e)
+  -> m ()
+logFreeVar v s x = whenVerbose v $ do
+  let r = showFreeVar x
+  Effect.log $ "--" <> s <> ": " <> showWide r
 
 varTelescope
   :: Monad e
