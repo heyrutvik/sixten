@@ -62,3 +62,5 @@ instance MonadContext v m => MonadContext v (ListT m) where
     pure $ case xs of
       ListT.Nil -> ListT.Nil
       ListT.Cons x xs' -> ListT.Cons x $ inUpdatedContext f xs'
+instance MonadContext v m => MonadContext v (ExceptT e m) where
+  inUpdatedContext f (ExceptT m) = ExceptT $ inUpdatedContext f m

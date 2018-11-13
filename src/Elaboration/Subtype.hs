@@ -10,13 +10,14 @@ import qualified Data.Vector as Vector
 
 import {-# SOURCE #-} Elaboration.Constraint
 import Analysis.Simplify
+import Effect
 import Elaboration.MetaVar
 import Elaboration.Monad
 import Elaboration.Unify
-import MonadContext
 import Syntax
 import Syntax.Core as Core
 import qualified Syntax.Pre.Scoped as Pre
+import Effect.Log as Log
 import TypedFreeVar
 import Util
 import Util.Tsil
@@ -113,7 +114,7 @@ instUntilExpr _ = InstUntil Explicit
 -- Subtyping/subsumption
 -- | subtype t1 t2 = f => f : t1 -> t2
 subtype :: Polytype -> Polytype -> Elaborate (CoreM -> CoreM)
-subtype typ1 typ2 = indentLog $ do
+subtype typ1 typ2 = Log.indent $ do
   logMeta 30 "subtype t1" typ1
   logMeta 30 "        t2" typ2
   deepSkolemise typ2 $ \rho f1 -> do
@@ -124,7 +125,7 @@ subtypeRho :: Polytype -> Rhotype -> InstUntil -> Elaborate (CoreM -> CoreM)
 subtypeRho typ1 typ2 instUntil = do
   logMeta 30 "subtypeRho t1" typ1
   logMeta 30 "           t2" typ2
-  indentLog $ do
+  Log.indent $ do
     typ1' <- whnf typ1
     typ2' <- whnf typ2
     subtypeRho' typ1' typ2' instUntil

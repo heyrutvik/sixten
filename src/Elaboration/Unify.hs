@@ -10,13 +10,14 @@ import qualified Data.Vector as Vector
 
 import {-# SOURCE #-} Elaboration.Constraint
 import Analysis.Simplify
+import Effect
+import Effect.Log as Log
 import qualified Elaboration.Equal as Equal
 import Elaboration.MetaVar
 import Elaboration.MetaVar.Zonk
 import Elaboration.Monad
 import Elaboration.Normalise hiding (whnf)
 import Elaboration.TypeOf
-import MonadContext
 import Pretty
 import Syntax
 import Syntax.Core
@@ -140,9 +141,10 @@ unify' cxt touchable type1 type2 = case (type1, type2) of
 
     typeMismatch = do
       printedCxt <- prettyContext cxt
-      throwLocated
+      reportLocated
         $ "Type mismatch" <> PP.line <>
           PP.vcat printedCxt
+      throwIO ErrorException
 
 occurs
   :: [(CoreM, CoreM)]
@@ -156,7 +158,7 @@ occurs cxt mv expr = do
     expr' <- zonk expr
     printedExpr <- prettyMeta expr'
     printedCxt <- prettyContext cxt
-    throwLocated
+    reportLocated
       $ "Cannot construct the infinite type"
       <> PP.line
       <> PP.vcat
@@ -166,6 +168,7 @@ occurs cxt mv expr = do
         , ""
         , "while trying to unify"
         ] ++ printedCxt)
+    throwIO ErrorException
 
 prettyContext :: [(CoreM, CoreM)] -> Elaborate [PP.Doc AnsiStyle]
 prettyContext cxt = do
@@ -182,7 +185,7 @@ prettyContext cxt = do
   return $ intercalate ["", "while trying to unify"] explanation
 
 prune :: HashSet FreeV -> CoreM -> Elaborate CoreM
-prune allowed expr = indentLog $ do
+prune allowed expr = Log.indent $ do
   logMeta 35 "prune expr" expr
   res <- inUpdatedContext (const mempty) $ bindMetas go expr
   logMeta 35 "prune res" res
@@ -196,7 +199,7 @@ prune allowed expr = indentLog $ do
           bindMetas go $ betaApps (open e) es
         Nothing -> do
           es' <- mapM (mapM whnf) es
-          localAllowed <- toHashSet <$> localVars
+          localAllowed <- toHashSet <$> getLocalVars
           case distinctVarView es' of
             Nothing ->
               return $ Meta m es'

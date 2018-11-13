@@ -13,8 +13,7 @@ import Elaboration.MetaVar.Zonk
 import Elaboration.Monad
 import qualified Elaboration.Normalise as Normalise
 import Elaboration.Subtype
-import MonadContext
-import MonadLog
+import Effect
 import Syntax
 import Syntax.Core
 import TypedFreeVar
@@ -62,7 +61,8 @@ trySolveConstraint m = inUpdatedContext (const mempty) $ do
             return $ Just sol
       _ -> do
         logMeta 25 "Malformed" typ'
-        throwLocated "Malformed constraint" -- TODO error message
+        reportLocated "Malformed constraint" -- TODO error message
+        return Nothing
 
 solveExprConstraints
   :: CoreM

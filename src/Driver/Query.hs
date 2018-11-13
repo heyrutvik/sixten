@@ -1,6 +1,7 @@
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE RankNTypes #-}
-module Driver.Query where
+module Driver.Query (module Rock, module Driver.Query) where
 
 import Protolude
 
@@ -32,7 +33,21 @@ data Query a where
 
   Type :: QName -> Query (Biclosed Core.Expr)
   Definition :: QName -> Query (ClosedDefinition Core.Expr)
+  QConstructor :: QConstr -> Query (Biclosed Core.Expr)
+  Instances :: QName -> ModuleName -> Query [(QName, Biclosed Core.Expr)]
 
 -- Derived queries
-fetchModuleHeader :: FilePath -> Task Query ModuleHeader
+fetchModuleHeader :: MonadFetch Query m => FilePath -> m ModuleHeader
 fetchModuleHeader file = fst <$> fetch (ParsedModule file)
+
+fetchDefinition :: MonadFetch Query m => QName -> m (Definition (Core.Expr meta) v)
+fetchDefinition name = openDefinition <$> fetch (Definition name)
+
+fetchType :: MonadFetch Query m => QName -> m (Core.Type meta v)
+fetchType name = biopen <$> fetch (Type name)
+
+fetchQConstructor :: MonadFetch Query m => QConstr -> m (Core.Type meta v)
+fetchQConstructor qc = biopen <$> fetch (QConstructor qc)
+
+fetchInstances :: MonadFetch Query m => QName -> m [(QName, Core.Expr meta v)]
+fetchInstances name = fmap (fmap biopen) <$> fetch (Instances name)

@@ -85,6 +85,15 @@ letVar h d e t = do
   i <- fresh
   return $ FreeVar i h d (Just e) t
 
+pureLetVar
+  :: Int
+  -> NameHint
+  -> d
+  -> e (FreeVar d e)
+  -> e (FreeVar d e)
+  -> FreeVar d e
+pureLetVar i h d = FreeVar i h d . Just
+
 showFreeVar
   :: (Functor e, Functor f, Foldable f, Pretty (f Doc), Pretty (e Doc))
   => f (FreeVar d e)

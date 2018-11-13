@@ -8,7 +8,9 @@ import qualified Data.List.NonEmpty as NonEmpty
 import qualified Data.Vector as Vector
 
 import qualified Builtin.Names as Builtin
+import Driver.Query
 import Effect
+import Effect.Log as Log
 import Elaboration.MetaVar
 import Elaboration.Monad
 import Syntax
@@ -21,7 +23,7 @@ import VIX
 
 type ExprFreeVar meta = FreeVar Plicitness (Expr meta)
 
-type MonadNormalise meta m = (MonadContext (ExprFreeVar meta) m, MonadReport m, MonadFix m, MonadLog m)
+type MonadNormalise meta m = (MonadIO m, MonadFetch Query m, MonadFresh m, MonadContext (ExprFreeVar meta) m, MonadLog m)
 
 data Args meta m = Args
   { expandTypeReps :: !Bool
@@ -69,7 +71,7 @@ whnf'
   -> Expr meta (ExprFreeVar meta) -- ^ Expression to normalise
   -> [(Plicitness, Expr meta (ExprFreeVar meta))] -- ^ Arguments to the expression
   -> m (Expr meta (ExprFreeVar meta))
-whnf' args expr exprs = indentLog $ do
+whnf' args expr exprs = Log.indent $ do
   let metaText :: Text
       metaText = "(meta)"
   logPretty 40 "whnf e" $ bimap (const metaText) pretty $ apps expr exprs
@@ -92,7 +94,7 @@ whnf' args expr exprs = indentLog $ do
           return $ apps (Meta m mes') es'
         Just e' -> whnf' args (open e') $ toList mes ++ es
     go e@(Global g) es = do
-      (d, _) <- definition g
+      d <- fetchDefinition g
       case d of
         ConstantDefinition Concrete e' -> do
           minlined <- normaliseDef whnf0 e' es
@@ -157,7 +159,7 @@ normalise' args = normaliseBuiltins go
           irreducible (Meta m mes') es
         Just e -> normalise' args (open e) $ toList mes ++ es
     go e@(Global g) es = do
-      (d, _) <- definition g
+      d <- fetchDefinition g
       case d of
         ConstantDefinition Concrete e' -> do
           minlined <- normaliseDef normalise0 e' es
@@ -339,12 +341,13 @@ normaliseDef norm = lambdas
     cases e = return $ Just e
 
 instantiateLetM
-  :: (MonadFix m, MonadVIX m)
+  :: MonadFresh m
   => LetRec (Expr meta) (ExprFreeVar meta)
   -> Scope LetVar (Expr meta) (ExprFreeVar meta)
   -> m (Expr meta (ExprFreeVar meta))
-instantiateLetM ds scope = mdo
-  vs <- forMLet ds $ \h _ s t -> letVar h Explicit (instantiateLet pure vs s) t
+instantiateLetM ds scope = do
+  is <- Vector.replicateM (Vector.length $ letBodies ds) fresh
+  let vs = iforLet ds $ \i h _ s t -> pureLetVar (is Vector.! i) h Explicit (instantiateLet pure vs s) t
   return $ instantiateLet pure vs scope
 
 etaReduce :: Expr meta v -> Maybe (Expr meta v)

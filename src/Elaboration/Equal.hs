@@ -7,10 +7,10 @@ import qualified Data.List.NonEmpty as NonEmpty
 import Data.Vector(Vector)
 import qualified Data.Vector as Vector
 
+import Effect
 import Elaboration.MetaVar
 import Elaboration.Monad
 import Elaboration.Normalise
-import MonadContext
 import Syntax
 import Syntax.Core
 import TypedFreeVar
