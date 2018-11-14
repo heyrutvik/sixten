@@ -15,6 +15,7 @@ import Protolude hiding (log)
 import Control.Lens
 import Control.Monad.Except
 import Control.Monad.Trans.Identity
+import Control.Monad.Trans.Maybe
 import Control.Monad.Writer
 
 import qualified Pretty
@@ -87,3 +88,5 @@ instance MonadLog m => MonadLog (IdentityT m) where
   indent (IdentityT m) = IdentityT $ indent m
 instance MonadLog m => MonadLog (ExceptT e m) where
   indent (ExceptT m) = ExceptT $ indent m
+instance MonadLog m => MonadLog (MaybeT m) where
+  indent (MaybeT m) = MaybeT $ indent m

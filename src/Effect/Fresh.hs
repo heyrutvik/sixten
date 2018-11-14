@@ -12,6 +12,7 @@ import Control.Lens
 import Control.Monad.Except
 import Control.Monad.ListT
 import Control.Monad.Trans.Identity
+import Control.Monad.Trans.Maybe
 import Control.Monad.Writer
 import qualified LLVM.IRBuilder as IRBuilder
 
@@ -61,4 +62,5 @@ instance MonadFresh m => MonadFresh (IdentityT m)
 instance MonadFresh m => MonadFresh (IRBuilder.IRBuilderT m)
 instance MonadFresh m => MonadFresh (IRBuilder.ModuleBuilderT m)
 instance MonadFresh m => MonadFresh (ExceptT e m)
+instance MonadFresh m => MonadFresh (MaybeT m)
 instance MonadFresh m => MonadFresh (ListT m)

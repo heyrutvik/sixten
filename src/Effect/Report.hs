@@ -15,7 +15,10 @@ module Effect.Report where
 import Protolude hiding (TypeError)
 
 import Control.Lens
-import Control.Monad.Trans
+import Control.Monad.Except
+import Control.Monad.ListT
+import Control.Monad.Trans.Maybe
+import qualified Data.List.Class as ListT
 
 import Error
 import Pretty
@@ -59,3 +62,19 @@ instance (MonadIO m, HasReportEnv env) => MonadReport (ReaderT env m) where
     liftIO $ f e
   located = local . set (reportEnv.currentLocation) . Just
   getCurrentLocation = view $ reportEnv.currentLocation
+
+------------------------------------------------------------------------------
+-- mtl instances
+-------------------------------------------------------------------------------
+instance MonadReport m => MonadReport (StateT s m) where
+  located loc (StateT s) = StateT $ located loc <$> s
+instance MonadReport m => MonadReport (ListT m) where
+  located loc (ListT mxs) = ListT $ do
+    xs <- located loc mxs
+    pure $ case xs of
+      ListT.Nil -> ListT.Nil
+      ListT.Cons x xs' -> ListT.Cons x $ located loc xs'
+instance MonadReport m => MonadReport (ExceptT e m) where
+  located loc (ExceptT m) = ExceptT $ located loc m
+instance MonadReport m => MonadReport (MaybeT m) where
+  located loc (MaybeT m) = MaybeT $ located loc m

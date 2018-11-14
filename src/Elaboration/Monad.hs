@@ -47,6 +47,7 @@ shouldInst _ _ = True
 data ElabEnv = ElabEnv
   { _contextEnv :: !(ContextEnv FreeV)
   , _elabTouchables :: !(MetaVar -> Bool)
+  , _currentModule :: !ModuleName
   , _vixEnv :: !VIX.Env
   }
 
@@ -66,10 +67,11 @@ instance HasContextEnv FreeV ElabEnv where
 
 type Elaborate = ReaderT ElabEnv (Task Query)
 
-runElaborate :: Elaborate a -> VIX a
-runElaborate = withReaderT $ \env -> ElabEnv
+runElaborate :: ModuleName -> Elaborate a -> VIX a
+runElaborate mname = withReaderT $ \env -> ElabEnv
   { _contextEnv = emptyContextEnv
   , _elabTouchables = const True
+  , _currentModule = mname
   , _vixEnv = env
   }
 

@@ -3,17 +3,19 @@ module Elaboration.Constraint where
 
 import Protolude
 
+import Control.Lens
 import Data.HashSet(HashSet)
 import qualified Data.Map as Map
 import Data.Vector(Vector)
 
 import Analysis.Simplify
+import Driver.Query
+import Effect
 import Elaboration.MetaVar
 import Elaboration.MetaVar.Zonk
 import Elaboration.Monad
 import qualified Elaboration.Normalise as Normalise
 import Elaboration.Subtype
-import Effect
 import Syntax
 import Syntax.Core
 import TypedFreeVar
@@ -41,15 +43,17 @@ trySolveConstraint m = inUpdatedContext (const mempty) $ do
     case typ' of
       (appsView -> (Global className, _)) -> do
         -- Try subsumption on all instances of the class until a match is found
-        globalClassInstances <- instances className
+        mname <- view currentModule
+        globalClassInstances <- fetchInstances className mname
         let candidates = [(Global g, bimap absurd absurd t) | (g, t) <- globalClassInstances]
               <> [(pure v, varType v) | v <- toList vs, varData v == Constraint]
-        matchingInstances <- forM candidates $ \(inst, instanceType) -> tryMaybe $ do
-          logMeta 35 "candidate instance" inst
-          logMeta 35 "candidate instance type" instanceType
-          f <- untouchable $ subtype instanceType typ'
-          return $ f inst
-        case catMaybes matchingInstances of
+        matchingInstances <- _
+        -- matchingInstances <- forM candidates $ \(inst, instanceType) -> try $ do
+        --   logMeta 35 "candidate instance" inst
+        --   logMeta 35 "candidate instance type" instanceType
+        --   f <- untouchable $ subtype instanceType typ'
+        --   return $ f inst
+        case foldMap (foldMap pure) (matchingInstances :: [Either ErrorException CoreM]) of
           [] -> do
             logVerbose 25 "No matching instance"
             return Nothing

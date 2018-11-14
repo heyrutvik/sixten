@@ -49,5 +49,5 @@ fetchType name = biopen <$> fetch (Type name)
 fetchQConstructor :: MonadFetch Query m => QConstr -> m (Core.Type meta v)
 fetchQConstructor qc = biopen <$> fetch (QConstructor qc)
 
-fetchInstances :: MonadFetch Query m => QName -> m [(QName, Core.Expr meta v)]
-fetchInstances name = fmap (fmap biopen) <$> fetch (Instances name)
+fetchInstances :: MonadFetch Query m => QName -> ModuleName -> m [(QName, Core.Expr meta v)]
+fetchInstances name mname = fmap (fmap biopen) <$> fetch (Instances name mname)

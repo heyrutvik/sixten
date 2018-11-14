@@ -12,11 +12,9 @@ module Effect.Context where
 import Protolude
 
 import Control.Lens
-import Control.Lens.TH
 import Control.Monad.Except
 import Control.Monad.ListT
-import Control.Monad.Trans.Identity
-import Control.Monad.Writer
+import Control.Monad.Trans.Maybe
 import qualified Data.List.Class as ListT
 
 import Util.Tsil
@@ -64,3 +62,5 @@ instance MonadContext v m => MonadContext v (ListT m) where
       ListT.Cons x xs' -> ListT.Cons x $ inUpdatedContext f xs'
 instance MonadContext v m => MonadContext v (ExceptT e m) where
   inUpdatedContext f (ExceptT m) = ExceptT $ inUpdatedContext f m
+instance MonadContext v m => MonadContext v (MaybeT m) where
+  inUpdatedContext f (MaybeT m) = MaybeT $ inUpdatedContext f m

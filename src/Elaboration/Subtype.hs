@@ -3,6 +3,7 @@ module Elaboration.Subtype where
 
 import Protolude
 
+import Control.Monad.Trans.Maybe
 import Data.HashSet(HashSet)
 import qualified Data.HashSet as HashSet
 import Data.Vector(Vector)
@@ -10,14 +11,15 @@ import qualified Data.Vector as Vector
 
 import {-# SOURCE #-} Elaboration.Constraint
 import Analysis.Simplify
+import qualified Builtin.Names as Builtin
 import Effect
+import Effect.Log as Log
 import Elaboration.MetaVar
 import Elaboration.Monad
 import Elaboration.Unify
 import Syntax
 import Syntax.Core as Core
 import qualified Syntax.Pre.Scoped as Pre
-import Effect.Log as Log
 import TypedFreeVar
 import Util
 import Util.Tsil
@@ -146,8 +148,10 @@ subtypeRho' (Pi h p t s) typ2 instUntil | shouldInst p instUntil = do
   f <- subtypeRho (Util.instantiate1 v s) typ2 instUntil
   return $ \x -> f $ App x p v
 subtypeRho' typ1 typ2 _ = do
-  unify [] typ1 typ2
-  return identity
+  mres <- runMaybeT $ unify [] typ1 typ2
+  case mres of
+    Nothing -> return $ const $ Builtin.Fail typ2
+    Just () -> return identity
 
 -- | funSubtypes typ ps = (ts, retType, f) => f : (ts -> retType) -> typ
 funSubtypes
@@ -219,4 +223,3 @@ existsPi = do
   argType <- existsType mempty
   resType <- existsType mempty
   return (argType, abstractNone resType)
-  

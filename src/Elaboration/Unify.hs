@@ -3,6 +3,8 @@ module Elaboration.Unify where
 
 import Protolude
 
+import Control.Monad.Fail
+import Control.Monad.Trans.Maybe
 import Data.HashSet(HashSet)
 import qualified Data.HashSet as HashSet
 import qualified Data.Text.Prettyprint.Doc as PP
@@ -25,16 +27,18 @@ import TypedFreeVar
 import Util
 import VIX
 
-unify :: [(CoreM, CoreM)] -> CoreM -> CoreM -> Elaborate ()
+type Unify = MaybeT Elaborate
+
+unify :: [(CoreM, CoreM)] -> CoreM -> CoreM -> Unify ()
 unify cxt type1 type2 = do
   logMeta 30 "unify t1" type1
   logMeta 30 "      t2" type2
-  type1' <- whnf type1
-  type2' <- whnf type2
-  touchable <- getTouchable
+  type1' <- lift $ whnf type1
+  type2' <- lift $ whnf type2
+  touchable <- lift getTouchable
   unify' ((type1', type2') : cxt) touchable type1' type2'
 
-unify' :: [(CoreM, CoreM)] -> (MetaVar -> Bool) -> CoreM -> CoreM -> Elaborate ()
+unify' :: [(CoreM, CoreM)] -> (MetaVar -> Bool) -> CoreM -> CoreM -> Unify ()
 unify' cxt touchable type1 type2 = case (type1, type2) of
   (Pi h1 p1 t1 s1, Pi h2 p2 t2 s2) | p1 == p2 -> absCase (h1 <> h2) p1 t1 t2 s1 s2
   (Lam h1 p1 t1 s1, Lam h2 p2 t2 s2) | p1 == p2 -> absCase (h1 <> h2) p1 t1 t2 s1 s2
@@ -136,7 +140,7 @@ unify' cxt touchable type1 type2 = case (type1, type2) of
             unify cxt type1 type2
 
     can'tUnify = do
-      equal <- Equal.exec $ Equal.expr type1 type2
+      equal <- lift $ Equal.exec $ Equal.expr type1 type2
       unless equal typeMismatch
 
     typeMismatch = do
@@ -144,13 +148,13 @@ unify' cxt touchable type1 type2 = case (type1, type2) of
       reportLocated
         $ "Type mismatch" <> PP.line <>
           PP.vcat printedCxt
-      throwIO ErrorException
+      fail "unification failed"
 
 occurs
   :: [(CoreM, CoreM)]
   -> MetaVar
   -> CoreM
-  -> Elaborate ()
+  -> Unify ()
 occurs cxt mv expr = do
   mvs <- metaVars expr
   when (mv `HashSet.member` mvs) $ do
@@ -168,9 +172,9 @@ occurs cxt mv expr = do
         , ""
         , "while trying to unify"
         ] ++ printedCxt)
-    throwIO ErrorException
+    fail "occurs check failed"
 
-prettyContext :: [(CoreM, CoreM)] -> Elaborate [PP.Doc AnsiStyle]
+prettyContext :: [(CoreM, CoreM)] -> Unify [PP.Doc AnsiStyle]
 prettyContext cxt = do
   explanation <- forM cxt $ \(t1, t2) -> do
     t1' <- zonk t1
@@ -184,7 +188,7 @@ prettyContext cxt = do
       ]
   return $ intercalate ["", "while trying to unify"] explanation
 
-prune :: HashSet FreeV -> CoreM -> Elaborate CoreM
+prune :: HashSet FreeV -> CoreM -> Unify CoreM
 prune allowed expr = Log.indent $ do
   logMeta 35 "prune expr" expr
   res <- inUpdatedContext (const mempty) $ bindMetas go expr
@@ -198,8 +202,8 @@ prune allowed expr = Log.indent $ do
         Just e ->
           bindMetas go $ betaApps (open e) es
         Nothing -> do
-          es' <- mapM (mapM whnf) es
-          localAllowed <- toHashSet <$> getLocalVars
+          es' <- lift $ mapM (mapM whnf) es
+          localAllowed <- toHashSet <$> lift getLocalVars
           case distinctVarView es' of
             Nothing ->
               return $ Meta m es'
