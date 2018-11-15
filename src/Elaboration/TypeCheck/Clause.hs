@@ -16,13 +16,14 @@ import Elaboration.Match as Match
 import Elaboration.MetaVar
 import Elaboration.Monad
 import Elaboration.Subtype
+import TypedFreeVar
 import Elaboration.TypeCheck.Pattern
-import MonadContext
+import Effect
+import Effect.Log as Log
 import Syntax
 import qualified Syntax.Core as Core
 import qualified Syntax.Pre.Scoped as Pre
 import Util
-import VIX
 
 checkConstantDef
   :: Pre.ConstantDef Pre.Expr FreeV
@@ -36,7 +37,7 @@ checkClauses
   :: NonEmpty (Pre.Clause Pre.Expr FreeV)
   -> Polytype
   -> Elaborate CoreM
-checkClauses clauses polyType = indentLog $ do
+checkClauses clauses polyType = Log.indent $ do
   forM_ clauses $ \clause -> logPretty 20 "checkClauses clause" $ pretty <$> clause
   logMeta 20 "checkClauses typ" polyType
 
@@ -86,7 +87,7 @@ checkClausesRho clauses rhoType = do
           Pre.Clause ppats _ = NonEmpty.head clauses
   (argTele, returnTypeScope, fs) <- funSubtypes rhoType ps
 
-  clauses' <- indentLog $ forM clauses $ \(Pre.Clause pats bodyScope) -> do
+  clauses' <- Log.indent $ forM clauses $ \(Pre.Clause pats bodyScope) -> do
     (pats', patVars) <- tcPats pats mempty argTele
     let body = instantiatePattern pure (boundPatVars patVars) bodyScope
         argExprs = snd3 <$> pats'

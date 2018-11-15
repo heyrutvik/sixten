@@ -47,13 +47,13 @@ trySolveConstraint m = inUpdatedContext (const mempty) $ do
         globalClassInstances <- fetchInstances className mname
         let candidates = [(Global g, bimap absurd absurd t) | (g, t) <- globalClassInstances]
               <> [(pure v, varType v) | v <- toList vs, varData v == Constraint]
-        matchingInstances <- _
-        -- matchingInstances <- forM candidates $ \(inst, instanceType) -> try $ do
-        --   logMeta 35 "candidate instance" inst
-        --   logMeta 35 "candidate instance type" instanceType
-        --   f <- untouchable $ subtype instanceType typ'
-        --   return $ f inst
-        case foldMap (foldMap pure) (matchingInstances :: [Either ErrorException CoreM]) of
+        matchingInstances <- forM candidates $ \(inst, instanceType) -> do
+          logMeta 35 "candidate instance" inst
+          logMeta 35 "candidate instance type" instanceType
+          untouchable
+            $ runSubtype (Just . ($ inst) <$> subtypeE instanceType typ')
+            $ \_err -> return Nothing
+        case catMaybes matchingInstances of
           [] -> do
             logVerbose 25 "No matching instance"
             return Nothing

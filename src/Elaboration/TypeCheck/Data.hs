@@ -4,13 +4,13 @@ import Prelude(unzip3)
 import Protolude hiding (typeRep)
 
 import qualified Builtin.Names as Builtin
+import Effect
 import Elaboration.Constraint as Constraint
 import Elaboration.MetaVar
 import Elaboration.Monad
 import Elaboration.TypeCheck.Expr
 import Elaboration.TypeOf
 import Elaboration.Unify
-import MonadContext
 import Syntax
 import qualified Syntax.Core as Core
 import qualified Syntax.Pre.Scoped as Pre
@@ -32,14 +32,14 @@ checkDataDef var (DataDef ps cs) = do
     forall h p t'
 
   withVars vs $ do
-    unify [] (Core.pis vs Builtin.Type) $ varType var
+    runUnify (unify [] (Core.pis vs Builtin.Type) $ varType var) report
 
     let constrRetType = Core.apps (pure var) $ (\v -> (varData v, pure v)) <$> vs
 
     (cs', rets, sizes) <- fmap unzip3 $ forM cs $ \(ConstrDef c t) ->
       checkConstrDef $ ConstrDef c $ instantiateTele pure vs t
 
-    mapM_ (unify [] constrRetType) rets
+    mapM_ (flip runUnify report . unify [] constrRetType) rets
 
     intRep <- getIntRep
 
@@ -52,7 +52,7 @@ checkDataDef var (DataDef ps cs) = do
           = productType (Core.MkType tagRep)
           $ foldl' sumType (Core.MkType TypeRep.UnitRep) sizes
 
-    unify [] Builtin.Type =<< typeOf constrRetType
+    flip runUnify report . unify [] Builtin.Type =<< typeOf constrRetType
 
     forM_ cs' $ \(ConstrDef qc e) ->
       logMeta 20 ("checkDataDef res " ++ show qc) e

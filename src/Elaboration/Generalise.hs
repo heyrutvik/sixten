@@ -11,6 +11,7 @@ import Data.Vector(Vector)
 
 import Analysis.Simplify
 import qualified Builtin.Names as Builtin
+import Effect
 import Elaboration.Constraint
 import Elaboration.MetaVar
 import Elaboration.MetaVar.Zonk
@@ -20,7 +21,6 @@ import Syntax.Core
 import TypedFreeVar
 import Util
 import Util.TopoSort
-import VIX
 
 data GeneraliseDefsMode
   = GeneraliseType

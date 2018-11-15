@@ -199,9 +199,6 @@ hashedLookup xs
   where
     m = toHashMap xs
 
-tryMaybe :: MonadError b m => m a -> m (Maybe a)
-tryMaybe m = fmap Just m `catchError` const (pure Nothing)
-
 unpermute
   :: (Eq a, Hashable a)
   => Vector (a, a)

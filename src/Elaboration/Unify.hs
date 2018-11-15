@@ -1,9 +1,9 @@
 {-# LANGUAGE FlexibleContexts, OverloadedStrings, ViewPatterns #-}
 module Elaboration.Unify where
 
-import Protolude
+import Protolude hiding (TypeError)
 
-import Control.Monad.Fail
+import Control.Monad.Except
 import Control.Monad.Trans.Maybe
 import Data.HashSet(HashSet)
 import qualified Data.HashSet as HashSet
@@ -25,9 +25,15 @@ import Syntax
 import Syntax.Core
 import TypedFreeVar
 import Util
-import VIX
 
-type Unify = MaybeT Elaborate
+type Unify = ExceptT Error Elaborate
+
+runUnify :: Unify a -> (Error -> Elaborate a) -> Elaborate a
+runUnify m handleError = do
+  res <- runExceptT m
+  case res of
+    Left err -> handleError err
+    Right f -> return f
 
 unify :: [(CoreM, CoreM)] -> CoreM -> CoreM -> Unify ()
 unify cxt type1 type2 = do
@@ -145,10 +151,12 @@ unify' cxt touchable type1 type2 = case (type1, type2) of
 
     typeMismatch = do
       printedCxt <- prettyContext cxt
-      reportLocated
-        $ "Type mismatch" <> PP.line <>
-          PP.vcat printedCxt
-      fail "unification failed"
+      loc <- getCurrentLocation
+      throwE $ TypeError
+        ("Type mismatch" <> PP.line <>
+          PP.vcat printedCxt)
+          loc
+          mempty
 
 occurs
   :: [(CoreM, CoreM)]
@@ -162,8 +170,9 @@ occurs cxt mv expr = do
     expr' <- zonk expr
     printedExpr <- prettyMeta expr'
     printedCxt <- prettyContext cxt
-    reportLocated
-      $ "Cannot construct the infinite type"
+    loc <- getCurrentLocation
+    throwE $ TypeError
+      ("Cannot construct the infinite type"
       <> PP.line
       <> PP.vcat
         ([ dullBlue printedMv
@@ -171,8 +180,9 @@ occurs cxt mv expr = do
         , dullBlue printedExpr
         , ""
         , "while trying to unify"
-        ] ++ printedCxt)
-    fail "occurs check failed"
+        ] ++ printedCxt))
+        loc
+        mempty
 
 prettyContext :: [(CoreM, CoreM)] -> Unify [PP.Doc AnsiStyle]
 prettyContext cxt = do

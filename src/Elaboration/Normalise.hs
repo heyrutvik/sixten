@@ -4,6 +4,7 @@ module Elaboration.Normalise where
 import Protolude hiding (TypeRep)
 
 import Control.Monad.Except
+import Data.IORef
 import qualified Data.List.NonEmpty as NonEmpty
 import qualified Data.Vector as Vector
 
@@ -79,11 +80,15 @@ whnf' args expr exprs = Log.indent $ do
   logPretty 40 "whnf res" $ bimap (const metaText) pretty res
   return res
   where
-    go e@(Var FreeVar { varValue = Just e' }) es = do
-      minlined <- normaliseDef whnf0 e' es
-      case minlined of
+    go e@(Var FreeVar { varValue = Just ref }) es = do
+      me' <- liftIO $ readIORef ref
+      case me' of
         Nothing -> return $ apps e es
-        Just (inlined, es') -> whnf' args inlined es'
+        Just e' -> do
+          minlined <- normaliseDef whnf0 e' es
+          case minlined of
+            Nothing -> return $ apps e es
+            Just (inlined, es') -> whnf' args inlined es'
     go e@(Var FreeVar { varValue = Nothing }) es = return $ apps e es
     go (Meta m mes) es = do
       sol <- handleMetaVar args m
@@ -145,11 +150,15 @@ normalise'
   -> m (Expr meta (ExprFreeVar meta))
 normalise' args = normaliseBuiltins go
   where
-    go e@(Var FreeVar { varValue = Just e' }) es = do
-      minlined <- normaliseDef normalise0 e' es
-      case minlined of
+    go e@(Var FreeVar { varValue = Just ref }) es = do
+      me' <- liftIO $ readIORef ref
+      case me' of
         Nothing -> irreducible e es
-        Just (inlined, es') -> normalise' args inlined es'
+        Just e' -> do
+          minlined <- normaliseDef normalise0 e' es
+          case minlined of
+            Nothing -> irreducible e es
+            Just (inlined, es') -> normalise' args inlined es'
     go e@(Var FreeVar { varValue = Nothing }) es = irreducible e es
     go (Meta m mes) es = do
       msol <- handleMetaVar args m
@@ -341,13 +350,15 @@ normaliseDef norm = lambdas
     cases e = return $ Just e
 
 instantiateLetM
-  :: MonadFresh m
+  :: (MonadFresh m, MonadIO m)
   => LetRec (Expr meta) (ExprFreeVar meta)
   -> Scope LetVar (Expr meta) (ExprFreeVar meta)
   -> m (Expr meta (ExprFreeVar meta))
 instantiateLetM ds scope = do
-  is <- Vector.replicateM (Vector.length $ letBodies ds) fresh
-  let vs = iforLet ds $ \i h _ s t -> pureLetVar (is Vector.! i) h Explicit (instantiateLet pure vs s) t
+  (vs, setters) <- fmap Vector.unzip $ forMLet ds $ \h _ _ t ->
+    letVar h Explicit t
+  forM_ (Vector.zip (letBodies ds) setters) $ \(s, set) ->
+    set $ instantiateLet pure vs s
   return $ instantiateLet pure vs scope
 
 etaReduce :: Expr meta v -> Maybe (Expr meta v)

@@ -1,3 +1,4 @@
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE MonadComprehensions #-}
 module Elaboration.Subtype where
 
@@ -23,7 +24,11 @@ import qualified Syntax.Pre.Scoped as Pre
 import TypedFreeVar
 import Util
 import Util.Tsil
-import VIX
+
+type Subtype = ExceptT Error Elaborate
+
+runSubtype :: Subtype a -> (Error -> Elaborate a) -> Elaborate a
+runSubtype = runUnify
 
 --------------------------------------------------------------------------------
 -- | deepSkolemise t1 = (t2, f) => f : t2 -> t1
@@ -31,29 +36,32 @@ import VIX
 -- Deep skolemisation. Like skolemise, but peels off quantifiers under pis,
 -- e.g. the `b` in `Int -> forall b. b -> b`
 deepSkolemise
-  :: Polytype
-  -> (Rhotype -> (CoreM -> CoreM) -> Elaborate a)
-  -> Elaborate a
+  :: (MonadTrans t, MonadContext FreeV (t Elaborate))
+  => Polytype
+  -> (Rhotype -> (CoreM -> CoreM) -> t Elaborate a)
+  -> t Elaborate a
 deepSkolemise t1 k
   = deepSkolemiseInner t1 mempty $ \vs t2 f -> k t2 $ f . lams vs
 
 deepSkolemiseInner
-  :: Polytype
+  :: (MonadTrans t, MonadContext FreeV (t Elaborate))
+  => Polytype
   -> HashSet FreeV
-  -> (Vector FreeV -> Rhotype -> (CoreM -> CoreM) -> Elaborate a)
-  -> Elaborate a
+  -> (Vector FreeV -> Rhotype -> (CoreM -> CoreM) -> t Elaborate a)
+  -> t Elaborate a
 deepSkolemiseInner typ argsToPass k = do
-  typ' <- whnf typ
+  typ' <- lift $ whnf typ
   deepSkolemiseInner' typ' argsToPass k
 
 deepSkolemiseInner'
-  :: Polytype
+  :: (MonadTrans t, MonadContext FreeV (t Elaborate))
+  => Polytype
   -> HashSet FreeV
-  -> (Vector FreeV -> Rhotype -> (CoreM -> CoreM) -> Elaborate a)
-  -> Elaborate a
+  -> (Vector FreeV -> Rhotype -> (CoreM -> CoreM) -> t Elaborate a)
+  -> t Elaborate a
 deepSkolemiseInner' typ@(Pi h p t resScope) argsToPass k = case p of
   Explicit -> do
-    y <- forall h p t
+    y <- lift $ forall h p t
     withVar y $ do
       let resType = Util.instantiate1 (pure y) resScope
       deepSkolemiseInner resType (HashSet.insert y argsToPass) $ \vs resType' f -> k
@@ -69,7 +77,7 @@ deepSkolemiseInner' typ@(Pi h p t resScope) argsToPass k = case p of
       -- (b : A). Int`), we have to bail out.
       | HashSet.size (HashSet.intersection (toHashSet t) argsToPass) > 0 = k mempty typ identity
       | otherwise = do
-        y <- forall h p t
+        y <- lift $ forall h p t
         withVar y $ do
           let resType = Util.instantiate1 (pure y) resScope
           deepSkolemiseInner resType argsToPass $ \vs resType' f -> k
@@ -116,42 +124,52 @@ instUntilExpr _ = InstUntil Explicit
 -- Subtyping/subsumption
 -- | subtype t1 t2 = f => f : t1 -> t2
 subtype :: Polytype -> Polytype -> Elaborate (CoreM -> CoreM)
-subtype typ1 typ2 = Log.indent $ do
-  logMeta 30 "subtype t1" typ1
-  logMeta 30 "        t2" typ2
+subtype typ1 typ2
+  = runSubtype (subtypeE typ1 typ2) $ \err -> do
+    report err
+    return $ const $ Builtin.Fail typ2
+
+subtypeE :: Polytype -> Polytype -> Subtype (CoreM -> CoreM)
+subtypeE typ1 typ2 = Log.indent $ do
+  logMeta 30 "subtypeE t1" typ1
+  logMeta 30 "         t2" typ2
   deepSkolemise typ2 $ \rho f1 -> do
-    f2 <- subtypeRho typ1 rho $ InstUntil Explicit
+    f2 <- subtypeRhoE typ1 rho $ InstUntil Explicit
     return $ f1 . f2
 
-subtypeRho :: Polytype -> Rhotype -> InstUntil -> Elaborate (CoreM -> CoreM)
-subtypeRho typ1 typ2 instUntil = do
-  logMeta 30 "subtypeRho t1" typ1
-  logMeta 30 "           t2" typ2
+subtypeRhoE :: Polytype -> Rhotype -> InstUntil -> Subtype (CoreM -> CoreM)
+subtypeRhoE typ1 typ2 instUntil = do
+  logMeta 30 "subtypeRhoE t1" typ1
+  logMeta 30 "            t2" typ2
   Log.indent $ do
-    typ1' <- whnf typ1
-    typ2' <- whnf typ2
-    subtypeRho' typ1' typ2' instUntil
+    typ1' <- lift $ whnf typ1
+    typ2' <- lift $ whnf typ2
+    subtypeRhoE' typ1' typ2' instUntil
 
 subtypeRho' :: Polytype -> Rhotype -> InstUntil -> Elaborate (CoreM -> CoreM)
-subtypeRho' (Pi h1 p1 argType1 retScope1) (Pi h2 p2 argType2 retScope2) _
+subtypeRho' typ1 typ2 instUntil
+  = runSubtype (subtypeRhoE' typ1 typ2 instUntil) $ \err -> do
+    report err
+    return $ const $ Builtin.Fail typ2
+
+subtypeRhoE' :: Polytype -> Rhotype -> InstUntil -> Subtype (CoreM -> CoreM)
+subtypeRhoE' (Pi h1 p1 argType1 retScope1) (Pi h2 p2 argType2 retScope2) _
   | p1 == p2 = do
     let h = h1 <> h2
-    f1 <- subtype argType2 argType1
+    f1 <- subtypeE argType2 argType1
     v2 <- forall h p1 argType2
     let v1 = f1 $ pure v2
     let retType1 = Util.instantiate1 v1 retScope1
         retType2 = Util.instantiate1 (pure v2) retScope2
-    f2 <- withVar v2 $ subtypeRho retType1 retType2 $ InstUntil Explicit
+    f2 <- withVar v2 $ subtypeRhoE retType1 retType2 $ InstUntil Explicit
     return $ \x -> lam v2 $ f2 (App x p1 v1)
-subtypeRho' (Pi h p t s) typ2 instUntil | shouldInst p instUntil = do
-  v <- exists h p t
-  f <- subtypeRho (Util.instantiate1 v s) typ2 instUntil
+subtypeRhoE' (Pi h p t s) typ2 instUntil | shouldInst p instUntil = do
+  v <- lift $ exists h p t
+  f <- subtypeRhoE (Util.instantiate1 v s) typ2 instUntil
   return $ \x -> f $ App x p v
-subtypeRho' typ1 typ2 _ = do
-  mres <- runMaybeT $ unify [] typ1 typ2
-  case mres of
-    Nothing -> return $ const $ Builtin.Fail typ2
-    Just () -> return identity
+subtypeRhoE' typ1 typ2 _ = do
+  unify [] typ1 typ2
+  return identity
 
 -- | funSubtypes typ ps = (ts, retType, f) => f : (ts -> retType) -> typ
 funSubtypes

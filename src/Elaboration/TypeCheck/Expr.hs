@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings, RecursiveDo #-}
+{-# LANGUAGE OverloadedStrings #-}
 module Elaboration.TypeCheck.Expr where
 
 import Protolude
@@ -6,10 +6,12 @@ import Protolude
 import Data.HashSet(HashSet)
 import Data.IORef
 import Data.Vector(Vector)
-import qualified Data.Vector as Vector
 
 import Analysis.Simplify
 import qualified Builtin.Names as Builtin
+import Driver.Query
+import Effect
+import Effect.Log as Log
 import Elaboration.Constraint
 import Elaboration.Constructor
 import Elaboration.Match
@@ -20,13 +22,11 @@ import Elaboration.TypeCheck.Clause
 import Elaboration.TypeCheck.Literal
 import Elaboration.TypeCheck.Pattern
 import Elaboration.Unify
-import MonadContext
 import Syntax
 import qualified Syntax.Core as Core
 import qualified Syntax.Pre.Scoped as Pre
 import TypedFreeVar
 import Util
-import VIX
 
 data Expected typ
   = Infer (IORef typ) InstUntil
@@ -46,7 +46,7 @@ checkPoly :: PreM -> Polytype -> Elaborate CoreM
 checkPoly expr typ = do
   logPretty 20 "checkPoly expr" $ pretty <$> expr
   logMeta 20 "checkPoly type" typ
-  res <- indentLog $ checkPoly' expr typ
+  res <- Log.indent $ checkPoly' expr typ
   logMeta 20 "checkPoly res expr" res
   return res
 
@@ -86,7 +86,7 @@ checkRho :: PreM -> Rhotype -> Elaborate CoreM
 checkRho expr typ = do
   logPretty 20 "checkRho expr" $ pretty <$> expr
   logMeta 20 "checkRho type" typ
-  res <- indentLog $ checkRho' expr typ
+  res <- Log.indent $ checkRho' expr typ
   logMeta 20 "checkRho res expr" res
   return res
 
@@ -96,7 +96,7 @@ checkRho' expr ty = tcRho expr (Check ty) (Just ty)
 inferRho :: PreM -> InstUntil -> Maybe Rhotype -> Elaborate (CoreM, Rhotype)
 inferRho expr instUntil expectedAppResult = do
   logPretty 20 "inferRho" $ pretty <$> expr
-  (resExpr, resType) <- indentLog $ inferRho' expr instUntil expectedAppResult
+  (resExpr, resType) <- Log.indent $ inferRho' expr instUntil expectedAppResult
   logMeta 20 "inferRho res expr" resExpr
   logMeta 20 "inferRho res typ" resType
   return (resExpr, resType)
@@ -114,7 +114,7 @@ tcRho expr expected expectedAppResult = case expr of
     f <- instExpected expected $ varType v
     return $ f $ Core.Var v
   Pre.Global g -> do
-    (_, typ) <- definition g
+    typ <- fetchType g
     f <- instExpected expected typ
     return $ f $ Core.Global g
   Pre.Lit l -> do
@@ -123,7 +123,7 @@ tcRho expr expected expectedAppResult = case expr of
     return $ f e
   Pre.Con cons -> do
     qc <- resolveConstr cons expectedAppResult
-    typ <- qconstructor qc
+    typ <- fetchQConstructor qc
     f <- instExpected expected typ
     return $ f $ Core.Con qc
   Pre.Pi p pat bodyScope -> do
@@ -199,40 +199,30 @@ tcLet
 tcLet ds scope expected expectedAppResult = do
   varDefs <- forM ds $ \(loc, h, def) -> do
     typ <- existsType h
-    var <- forall h Explicit typ
-    return (var, loc, def)
+    (var, set) <- letVar h Explicit typ
+    return (var, (set, loc, def))
 
-  let vars = fst3 <$> varDefs
+  let vars = fst <$> varDefs
 
-  ds' <- withVars vars $ do
-    instDefs <- forM varDefs $ \(var, loc, def) -> located loc $ do
+  withVars vars $ do
+    instDefs <- forM varDefs $ \(var, (set, loc, def)) -> located loc $ do
       let instDef@(Pre.ConstantDef _ _ mtyp) = Pre.instantiateLetConstantDef pure vars def
       case mtyp of
         Just typ -> do
           typ' <- checkPoly typ Builtin.Type
-          unify [] (varType var) typ'
+          runUnify (unify [] (varType var) typ') report
         Nothing -> return ()
-      return (var, loc, instDef)
+      return (var, (set, loc, instDef))
 
-    forM instDefs $ \(var, loc, def) -> located loc $ do
-      def' <- checkConstantDef def $ varType var
-      return (var, loc, def')
-
-  let abstr = letAbstraction vars
-      ds'' = LetRec
-        $ flip fmap ds'
-        $ \(v, loc, (_, e)) -> LetBinding (varHint v) loc (abstract abstr e) $ varType v
-
-  mdo
-    let inst = instantiateLet pure vars'
-    vars' <- iforMLet ds'' $ \i h _ s t -> do
-      let (_, _, (a, _)) = ds' Vector.! i
+    ds' <- forM instDefs $ \(var, (set, loc, def)) -> located loc $ do
+      (a, e) <- checkConstantDef def $ varType var
       case a of
-        Abstract -> forall h Explicit t
-        Concrete -> letVar h Explicit (inst s) t
-    let abstr' = letAbstraction vars'
-    body <- withVars vars' $ tcRho (instantiateLet pure vars' scope) expected expectedAppResult
-    return $ Core.Let ds'' $ abstract abstr' body
+        Abstract -> return ()
+        Concrete -> set e
+      return (var, loc, e)
+
+    body <- tcRho (instantiateLet pure vars scope) expected expectedAppResult
+    return $ Core.let_ ds' body
 
 tcBranches
   :: PreM
@@ -258,7 +248,7 @@ tcBranches expr pbrs expected expectedAppResult = do
       resType <- existsType mempty
       brs <- forM inferredPats $ \(pat, br, patVars) -> withPatVars patVars $ do
         (br', brType) <- inferRho br instUntil expectedAppResult
-        unify mempty brType resType
+        runUnify (unify mempty brType resType) report
         return (pat, br')
       return (brs, resType)
 

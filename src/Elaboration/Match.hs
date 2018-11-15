@@ -10,11 +10,12 @@ import Data.Vector(Vector)
 
 import qualified Analysis.Simplify as Simplify
 import qualified Builtin.Names as Builtin
+import Driver.Query
+import Effect
 import Elaboration.Constraint
 import Elaboration.MetaVar
 import Elaboration.Monad
 import Elaboration.TypeOf
-import MonadContext
 import Syntax
 import Syntax.Core
 import Syntax.Core.Pattern
@@ -151,15 +152,18 @@ matchCon expr failVar retType exprs clauses expr0 = do
     constr (ConPat c _ _) = c
     constr _ = panic "match constr"
     constructors typeName = do
-      (DataDefinition (DataDef _ cs) _, _) <- definition typeName
-      return $ QConstr typeName . constrName <$> cs
+      def <- fetchDefinition typeName
+      case def of
+        DataDefinition (DataDef _ cs) _ ->
+          return $ QConstr typeName . constrName <$> cs
+        _ -> panic $ "constructors: not a data def " <> shower typeName
 
 conPatArgs
   :: QConstr
   -> Vector (Plicitness, CoreM)
   -> Elaborate (Vector FreeV)
 conPatArgs c params = do
-  ctype <- qconstructor c
+  ctype <- fetchQConstructor c
   let (tele, _) = pisView ctype
       tele' = instantiatePrefix (snd <$> params) tele
   forTeleWithPrefixM tele' $ \h p s vs ->

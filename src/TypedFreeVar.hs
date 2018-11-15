@@ -8,6 +8,7 @@ import Bound
 import Data.Char
 import Data.Functor.Classes
 import qualified Data.HashSet as HashSet
+import Data.IORef
 import qualified Data.Text as Text
 import Data.Vector(Vector)
 
@@ -22,7 +23,7 @@ data FreeVar d e = FreeVar
   { varId :: !Int
   , varHint :: !NameHint
   , varData :: d
-  , varValue :: Maybe (e (FreeVar d e))
+  , varValue :: Maybe (IORef (Maybe (e (FreeVar d e))))
   , varType :: e (FreeVar d e)
   }
 
@@ -75,24 +76,15 @@ forall h p t = do
   return v
 
 letVar
-  :: MonadFresh m
+  :: (MonadFresh m, MonadIO m)
   => NameHint
   -> d
   -> e (FreeVar d e)
-  -> e (FreeVar d e)
-  -> m (FreeVar d e)
-letVar h d e t = do
+  -> m (FreeVar d e, e (FreeVar d e) -> m ())
+letVar h d t = do
   i <- fresh
-  return $ FreeVar i h d (Just e) t
-
-pureLetVar
-  :: Int
-  -> NameHint
-  -> d
-  -> e (FreeVar d e)
-  -> e (FreeVar d e)
-  -> FreeVar d e
-pureLetVar i h d = FreeVar i h d . Just
+  ref <- liftIO $ newIORef Nothing
+  return (FreeVar i h d (Just ref) t, liftIO . writeIORef ref . Just)
 
 showFreeVar
   :: (Functor e, Functor f, Foldable f, Pretty (f Doc), Pretty (e Doc))
