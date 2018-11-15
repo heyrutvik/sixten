@@ -3,10 +3,11 @@
 {-# LANGUAGE RankNTypes #-}
 module Driver.Query (module Rock, module Driver.Query) where
 
-import Protolude
+import Protolude hiding (TypeRep)
 
 import Data.HashMap.Lazy(HashMap)
 import Data.HashSet(HashSet)
+import Data.Vector(Vector)
 import Rock
 
 import Backend.Target
@@ -16,6 +17,7 @@ import qualified Syntax.Core as Core
 import qualified Syntax.Pre.Definition as Pre
 import qualified Syntax.Pre.Scoped as Pre
 import qualified Syntax.Pre.Unscoped as Unscoped
+import TypeRep
 
 type ModuleDefinitions = HashMap QName (SourceLoc, Unscoped.TopLevelDefinition)
 type ResolvedModule = HashMap QName [(QName, SourceLoc, Closed (Pre.Definition Pre.Expr))]
@@ -34,6 +36,7 @@ data Query a where
   Type :: QName -> Query (Biclosed Core.Expr)
   Definition :: QName -> Query (ClosedDefinition Core.Expr)
   QConstructor :: QConstr -> Query (Biclosed Core.Expr)
+  ClassMethods :: QName -> Query (Maybe [(Name, SourceLoc)])
   Instances :: QName -> ModuleName -> Query [(QName, Biclosed Core.Expr)]
 
 -- Derived queries
@@ -51,3 +54,6 @@ fetchQConstructor qc = biopen <$> fetch (QConstructor qc)
 
 fetchInstances :: MonadFetch Query m => QName -> ModuleName -> m [(QName, Core.Expr meta v)]
 fetchInstances name mname = fmap (fmap biopen) <$> fetch (Instances name mname)
+
+fetchIntRep :: MonadFetch Query m => m TypeRep
+fetchIntRep = TypeRep.intRep <$> fetch Driver.Query.Target

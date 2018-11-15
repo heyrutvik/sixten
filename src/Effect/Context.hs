@@ -13,6 +13,7 @@ import Protolude
 
 import Control.Lens
 import Control.Monad.Except
+import Control.Monad.Identity
 import Control.Monad.ListT
 import Control.Monad.Trans.Maybe
 import qualified Data.List.Class as ListT
@@ -64,3 +65,5 @@ instance MonadContext v m => MonadContext v (ExceptT e m) where
   inUpdatedContext f (ExceptT m) = ExceptT $ inUpdatedContext f m
 instance MonadContext v m => MonadContext v (MaybeT m) where
   inUpdatedContext f (MaybeT m) = MaybeT $ inUpdatedContext f m
+instance MonadContext v m => MonadContext v (IdentityT m) where
+  inUpdatedContext f (IdentityT m) = IdentityT $ inUpdatedContext f m

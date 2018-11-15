@@ -7,6 +7,8 @@ import Data.Vector(Vector)
 import qualified Data.Vector as Vector
 
 import qualified Builtin.Names as Builtin
+import Effect
+import Effect.Log as Log
 import Elaboration.Generalise
 import Elaboration.MetaVar
 import Elaboration.Monad
@@ -15,8 +17,6 @@ import Elaboration.TypeCheck.Clause
 import Elaboration.TypeCheck.Data
 import Elaboration.TypeCheck.Expr
 import Elaboration.Unify
-import MonadContext
-import Fresh
 import Syntax
 import qualified Syntax.Core as Core
 import qualified Syntax.Pre.Scoped as Pre
@@ -94,7 +94,7 @@ checkAndGeneraliseDefs defs = withVars ((\(v, _, _, _) -> v) <$> defs) $ do
   -- Assume that the specified type signatures are correct.
   sigDefs' <- forM sigDefs $ \(var, name, loc, def, typ) -> do
     typ' <- checkPoly typ Builtin.Type
-    unify [] (varType var) typ'
+    runUnify (unify [] (varType var) typ') report
     return (var, name, loc, def)
 
   preId <- fresh
@@ -149,7 +149,7 @@ checkDefs
       , Definition (Core.Expr MetaVar) FreeV
       )
     )
-checkDefs defs = indentLog $
+checkDefs defs = Log.indent $
   fmap join $ forM defs $ \(var, name, loc, def) ->
     located loc $ checkDef var name loc def
 

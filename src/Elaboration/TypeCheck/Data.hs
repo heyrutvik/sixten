@@ -4,6 +4,7 @@ import Prelude(unzip3)
 import Protolude hiding (typeRep)
 
 import qualified Builtin.Names as Builtin
+import Driver.Query
 import Effect
 import Elaboration.Constraint as Constraint
 import Elaboration.MetaVar
@@ -16,7 +17,6 @@ import qualified Syntax.Core as Core
 import qualified Syntax.Pre.Scoped as Pre
 import TypedFreeVar
 import qualified TypeRep
-import VIX
 
 checkDataDef
   :: FreeV
@@ -41,7 +41,7 @@ checkDataDef var (DataDef ps cs) = do
 
     mapM_ (flip runUnify report . unify [] constrRetType) rets
 
-    intRep <- getIntRep
+    intRep <- fetchIntRep
 
     let tagRep = case cs of
           [] -> TypeRep.UnitRep
