@@ -1,4 +1,11 @@
-{-# LANGUAGE FlexibleContexts, OverloadedStrings #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE OverloadedStrings #-}
+
+-- For the MonadFetch instances for LLVM.IRBuilder:
+{-# LANGUAGE UndecidableInstances #-}
+{-# OPTIONS_GHC -fno-warn-orphans #-}
 module Backend.Generate where
 
 import Protolude hiding (TypeRep, typeRep, handle)
@@ -26,11 +33,13 @@ import qualified LLVM.AST.Type as LLVM.Type
 import qualified LLVM.AST.Typed as LLVM
 import LLVM.IRBuilder as IRBuilder
 import qualified LLVM.Pretty as LLVM
+import Rock
 
 import qualified Backend.ExtractExtern as ExtractExtern
 import Backend.Generate.LLVM
 import Backend.Generate.Types
 import qualified Builtin.Names as Builtin
+import Driver.Query
 import Paths_sixten
 import Syntax.Annotation
 import Syntax.Branches
@@ -55,6 +64,9 @@ import VIX
 
 type ModuleGen = ModuleBuilderT VIX
 type InstrGen = IRBuilderT ModuleGen
+
+instance MonadFetch k m => MonadFetch k (IRBuilderT m) where
+instance MonadFetch k m => MonadFetch k (ModuleBuilderT m) where
 
 -------------------------------------------------------------------------------
 -- Generation
@@ -93,13 +105,13 @@ generateExpr expr typ = case expr of
 
 generateTypeExpr :: Expr Var -> InstrGen LLVM.Operand
 generateTypeExpr expr = do
-  typeRep <- getTypeRep
+  typeRep <- fetchTypeRep
   repVar <- generateExpr expr $ Lit $ TypeRep typeRep
   loadVar typeRep repVar `named` "type-rep"
 
 generateTypeSize :: Expr Var -> InstrGen LLVM.Operand
 generateTypeSize (MkType rep) = do
-  bits <- getTypeRepBits
+  bits <- fetchTypeRepBits
   return $ LLVM.ConstantOperand $ LLVM.Int bits $ TypeRep.size rep
 generateTypeSize typ = do
   rep <- generateTypeExpr typ
@@ -107,7 +119,7 @@ generateTypeSize typ = do
 
 generateSizeOf :: LLVM.Operand -> InstrGen LLVM.Operand
 generateSizeOf rep = do
-  typeRep <- getTypeRep
+  typeRep <- fetchTypeRep
   generateIntExpr
     $ Call (Global Builtin.SizeOfName)
     $ pure
@@ -115,7 +127,7 @@ generateSizeOf rep = do
 
 generateIntExpr :: Expr Var -> InstrGen LLVM.Operand
 generateIntExpr expr = do
-  intRep <- getIntRep
+  intRep <- fetchIntRep
   sizeVar <- generateExpr expr $ Lit $ TypeRep intRep
   loadVar intRep sizeVar `named` "size"
 
@@ -181,28 +193,28 @@ storeExpr expr typ out = case expr of
   Case e brs -> void $ generateBranches e brs $ \branch -> storeExpr branch typ out
 
 literalRep :: Literal -> InstrGen TypeRep
-literalRep Integer {} = getIntRep
-literalRep Natural {} = getIntRep
+literalRep Integer {} = fetchIntRep
+literalRep Natural {} = fetchIntRep
 literalRep Byte {} = return TypeRep.ByteRep
-literalRep TypeRep {} = getTypeRep
+literalRep TypeRep {} = fetchTypeRep
 
 literalConstant :: Literal -> InstrGen LLVM.Constant
 literalConstant (Integer i) = do
-  bits <- getIntBits
+  bits <- fetchIntBits
   return $ LLVM.Int bits i
 literalConstant (Natural i) =
   literalConstant $ Integer $ fromIntegral i
 literalConstant (Byte b) =
   return $ LLVM.Int 8 $ fromIntegral b
 literalConstant (TypeRep r) = do
-  bits <- getTypeRepBits
+  bits <- fetchTypeRepBits
   return $ LLVM.Int bits $ TypeRep.size r
 
 storeLit :: Literal -> LLVM.Operand -> InstrGen ()
 storeLit lit out = do
   align <- case lit of
     Byte {} -> return 1
-    _ -> getPtrAlign
+    _ -> fetchPtrAlign
   c <- literalConstant lit
   castRet <- bitcast out $ LLVM.ptr $ LLVM.typeOf c
   store castRet align $ LLVM.ConstantOperand c
@@ -236,7 +248,8 @@ storeCall lang retDir funExpr es typ out = do
 funSignature :: Expr Var -> Int -> InstrGen (RetDir, Vector Direction)
 funSignature expr arity = case expr of
   Global g -> do
-    msig <- signature g
+    -- TODO Look among local signatures (from extracted extern code)
+    msig <- fetch $ Signature g
     return $ case msig of
       Just (FunctionSig _ retDir argDirs) -> (retDir, argDirs)
       _ -> def
@@ -255,7 +268,7 @@ generateDirectedExpr dir (Anno expr typ)
 gcAllocExpr :: Anno Expr Var -> InstrGen LLVM.Operand
 gcAllocExpr (Anno expr typ) = do
   rep <- generateTypeExpr typ
-  typeRep <- getTypeRep
+  typeRep <- fetchTypeRep
   sz <- generateSizeOf rep
   ref <- gcAlloc sz
   let typ' = case typ of
@@ -269,8 +282,8 @@ productOffsets
   => f LLVM.Operand
   -> InstrGen ([LLVM.Operand], LLVM.Operand)
 productOffsets os = do
-  typeRep <- getTypeRep
-  typeRepBits <- getTypeRepBits
+  typeRep <- fetchTypeRep
+  typeRepBits <- fetchTypeRepBits
   let
     zeroTypeRep = LLVM.ConstantOperand $ LLVM.Int typeRepBits 0
     go (indices, fullRep) rep = do
@@ -289,11 +302,11 @@ productOffsets'
   :: Vector LLVM.Operand
   -> InstrGen [LLVM.Operand]
 productOffsets' xs = do
-  typeRepBits <- getTypeRepBits
+  typeRepBits <- fetchTypeRepBits
   let
     zeroTypeRep = LLVM.ConstantOperand $ LLVM.Int typeRepBits 0
     go (indices, fullRep) (i, rep) = do
-      typeRep <- getTypeRep
+      typeRep <- fetchTypeRep
       fullRep' <- if i == Vector.length xs - 1
         then return fullRep
         else generateTypeExpr
@@ -313,13 +326,13 @@ generateCon Builtin.Ref es _ = do
   (is, fullRep) <- productOffsets reps
   fullSize <- generateSizeOf fullRep
   ref <- gcAlloc fullSize
-  typeRep <- getTypeRep
+  typeRep <- fetchTypeRep
   Foldable.forM_ (zip (Vector.toList reps) $ zip is $ Vector.toList es) $ \(rep, (i, Anno e _)) -> do
     index <- gep ref [i] `named` "index"
     storeExpr e (pure $ DirectVar typeRep rep) index
   intType <- integerType
   refInt <- ptrtoint ref intType `named` "ref-int"
-  ptrRep <- getPtrRep
+  ptrRep <- fetchPtrRep
   return $ DirectVar ptrRep refInt
 generateCon _ _ (MkType TypeRep.UnitRep) = return VoidVar
 generateCon qc es typ = do
@@ -330,15 +343,15 @@ generateCon qc es typ = do
 
 storeCon :: QConstr -> Vector (Anno Expr Var) -> LLVM.Operand -> InstrGen ()
 storeCon Builtin.Ref es out = do
-  ptrRep <- getPtrRep
+  ptrRep <- fetchPtrRep
   v <- generateCon Builtin.Ref es $ Lit $ TypeRep ptrRep
   i <- loadVar ptrRep v
   storeDirect ptrRep i out
 storeCon qc es out = do
-  intRep <- getIntRep
-  typeRep <- getTypeRep
-  mqcIndex <- constrIndex qc
-  let es' = maybe identity (Vector.cons . flip Anno (Lit $ TypeRep intRep) . Lit . Integer . fromIntegral) mqcIndex es
+  intRep <- fetchIntRep
+  typeRep <- fetchTypeRep
+  mqcIndex <- fetch $ ConstrIndex qc
+  let es' = maybe identity (Vector.cons . flip Anno (Lit $ TypeRep intRep) . Lit . Integer) mqcIndex es
   reps <- mapM (generateTypeExpr . typeAnno) es'
   is <- productOffsets' reps
   Foldable.forM_ (zip (Vector.toList reps) $ zip is $ Vector.toList es') $ \(rep, (i, Anno e _)) -> do
@@ -347,13 +360,13 @@ storeCon qc es out = do
 
 generateFunOp :: Expr Var -> RetDir -> Vector Direction -> InstrGen LLVM.Operand
 generateFunOp (Global g) retDir argDirs = do
-  msig <- signature g
+  msig <- fetch $ Signature g
   let typ = case msig of
         Just sig -> signatureType sig
         Nothing -> functionType retDir argDirs
   return $ LLVM.ConstantOperand $ LLVM.GlobalReference (LLVM.ptr typ) $ LLVM.Name $ fromQName g
 generateFunOp e retDir argDirs = do
-  piRep <- getPiRep
+  piRep <- fetchPiRep
   funVar <- generateExpr e $ Lit $ TypeRep piRep
   funInt <- loadVar piRep funVar `named` "func-int"
   funPtr <- inttoptr funInt indirectType `named` "func-ptr"
@@ -362,8 +375,8 @@ generateFunOp e retDir argDirs = do
 
 generateGlobal :: QName -> InstrGen Var
 generateGlobal g = do
-  msig <- signature g
-  ptrRep <- getPtrRep
+  msig <- fetch $ Signature g
+  ptrRep <- fetchPtrRep
   let typ = signatureType $ fromMaybe (ConstantSig Indirect) msig
       glob = LLVM.GlobalReference (LLVM.ptr typ) $ fromQName g
       globOperand = LLVM.ConstantOperand glob
@@ -374,7 +387,7 @@ generateGlobal g = do
       $ LLVM.ConstantOperand
       $ LLVM.Constant.BitCast glob indirectType
     Just (ConstantSig Indirect) -> do
-      align <- getPtrAlign
+      align <- fetchPtrAlign
       ptr <- load globOperand align `named` "global"
       return $ IndirectVar ptr
     Just FunctionSig {} -> return
@@ -392,10 +405,10 @@ generateBranches
   -> (Expr Var -> InstrGen a)
   -> InstrGen [(a, LLVM.Name)]
 generateBranches (Anno caseExpr caseExprType) branches brCont = do
-  intRep <- getIntRep
-  intBits <- getIntBits
-  typeRep <- getTypeRep
-  align <- getPtrAlign
+  intRep <- fetchIntRep
+  intBits <- fetchIntBits
+  typeRep <- fetchTypeRep
+  align <- fetchPtrAlign
   case branches of
     ConBranches [] -> do
       void $ generateExpr caseExpr caseExprType
@@ -410,7 +423,7 @@ generateBranches (Anno caseExpr caseExprType) branches brCont = do
       br branchBlock
       emitBlockStart branchBlock
 
-      typeRepBits <- getTypeRepBits
+      typeRepBits <- fetchTypeRepBits
 
       argsReps <- forTeleWithPrefixM tele $ \h () s argsReps -> do
         let args = fst <$> argsReps
@@ -461,7 +474,7 @@ generateBranches (Anno caseExpr caseExprType) branches brCont = do
         e0 <- load e0IntPtr align `named` "tag"
 
         constrIndices <- Traversable.forM cbrs $ \(ConBranch qc _ _) -> do
-          Just qcIndex <- constrIndex qc
+          Just qcIndex <- fetch $ ConstrIndex qc
           return $ LLVM.Int intBits $ fromIntegral qcIndex
 
         switch e0 failBlock $ zip constrIndices branchBlocks
@@ -473,7 +486,7 @@ generateBranches (Anno caseExpr caseExprType) branches brCont = do
       branchResults <- Traversable.forM (zip branchBlocks cbrs) $ \(branchBlock, ConBranch _ tele brScope) -> do
         emitBlockStart branchBlock
 
-        typeRepBits <- getTypeRepBits
+        typeRepBits <- fetchTypeRepBits
 
         argsReps <- forTeleWithPrefixM tele $ \h () s argsReps -> do
           let args = fst <$> argsReps
@@ -548,10 +561,10 @@ generateBranches (Anno caseExpr caseExprType) branches brCont = do
 
 generateConstant :: Visibility -> QName -> Constant Expr Var -> ModuleGen (InstrGen ())
 generateConstant visibility name (Constant aexpr@(Anno expr _)) = do
-  msig <- signature name
-  align <- getPtrAlign
-  intBits <- getIntBits
-  typeRepBits <- getTypeRepBits
+  msig <- fetch $ Signature name
+  align <- fetchPtrAlign
+  intBits <- fetchIntBits
+  typeRepBits <- fetchTypeRepBits
   let gname = fromQName name
       linkage = case visibility of
         Private -> LLVM.Private
@@ -627,7 +640,7 @@ generateConstant visibility name (Constant aexpr@(Anno expr _)) = do
 
 generateFunction :: Visibility -> QName -> Function Expr Var -> ModuleGen ()
 generateFunction visibility name (Function args funScope) = do
-  msig@(Just (FunctionSig _ retDir argDirs)) <- signature name
+  msig@(Just (FunctionSig _ retDir argDirs)) <- fetch $ Signature name
   ((retType, params), basicBlocks) <- runIRBuilderT emptyIRBuilder $ do
     paramVars <- iforMTele args $ \i h _ _sz -> do
       let d = argDirs Vector.! i
@@ -722,7 +735,7 @@ generateDeclaration decl
 
 declareGlobal :: QName -> ModuleGen ()
 declareGlobal g = do
-  msig <- signature g
+  msig <- fetch $ Signature g
   case msig of
     Just (FunctionSig _ retDir argDirs) -> declareFun retDir (fromQName g) argDirs
     Just (ConstantSig dir) -> declareConstant dir $ fromQName g
@@ -748,7 +761,7 @@ declareConstant dir name = do
         Indirect -> indirectType
         Direct TypeRep.UnitRep -> indirectType
         Direct rep -> directType rep
-  align <- getPtrAlign
+  align <- fetchPtrAlign
   emitDefn $ LLVM.GlobalDefinition LLVM.globalVariableDefaults
     { LLVM.Global.name = name
     , LLVM.Global.linkage = LLVM.External
@@ -772,7 +785,7 @@ generateSubmodule
   -> VIX GeneratedSubmodule
 generateSubmodule name modul = do
   let followAliases g = do
-        msig <- signature g
+        msig <- fetch $ Signature g
         case msig of
           Just (AliasSig g') -> followAliases g'
           _ -> return g

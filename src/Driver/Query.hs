@@ -35,8 +35,13 @@ data Query a where
   Type :: QName -> Query (Biclosed Core.Expr)
   Definition :: QName -> Query (ClosedDefinition Core.Expr)
   QConstructor :: QConstr -> Query (Biclosed Core.Expr)
+  -- TODO should perhaps be derived?
   ClassMethods :: QName -> Query (Maybe [(Name, SourceLoc)])
+  ConstrIndex :: QConstr -> Query (Maybe Integer)
+
   Instances :: QName -> ModuleName -> Query [(QName, Biclosed Core.Expr)]
+
+  Signature :: QName -> Query (Maybe (Signature ReturnIndirect))
 
 -- Derived queries
 fetchModuleHeader :: MonadFetch Query m => FilePath -> m ModuleHeader
@@ -59,3 +64,9 @@ fetchIntRep = TypeRep.intRep <$> fetch Driver.Query.Target
 
 fetchTypeRep :: MonadFetch Query m => m TypeRep
 fetchTypeRep = TypeRep.typeRep <$> fetch Driver.Query.Target
+
+fetchPtrRep :: MonadFetch Query m => m TypeRep
+fetchPtrRep = TypeRep.ptrRep <$> fetch Driver.Query.Target
+
+fetchPiRep :: MonadFetch Query m => m TypeRep
+fetchPiRep = TypeRep.piRep <$> fetch Driver.Query.Target
