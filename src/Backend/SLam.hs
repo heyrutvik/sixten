@@ -10,15 +10,15 @@ import qualified Data.Text.Prettyprint.Doc as PP
 import qualified Data.Vector as Vector
 
 import qualified Builtin.Names as Builtin
+import Driver.Query
+import Effect
+import Effect.Log as Log
 import qualified Elaboration.Normalise as Normalise
 import qualified Elaboration.TypeOf as TypeOf
-import MonadContext
-import Fresh
 import Syntax
 import qualified Syntax.Core as Core
 import Syntax.Sized.Anno
 import qualified Syntax.Sized.SLambda as SLambda
-import MonadLog
 import TypedFreeVar
 import Util
 import VIX
@@ -26,7 +26,7 @@ import VIX
 type FreeV = FreeVar Plicitness (Core.Expr Void)
 
 newtype SLam a = SLam { runSlam :: VIX a }
-  deriving (Functor, Applicative, Monad, MonadFail, MonadFix, MonadIO, MonadVIX, MonadFresh, MonadError Error, MonadLog)
+  deriving (Functor, Applicative, Monad, MonadIO, MonadFresh, MonadReport, MonadLog, MonadFetch Query)
 
 whnf :: Core.Expr Void FreeV -> SLam (Core.Expr Void FreeV)
 whnf e = Normalise.whnf' Normalise.Args
@@ -39,16 +39,19 @@ typeOf = TypeOf.typeOf' TypeOf.voidArgs
 
 -- | Dummy instance, since we don't use the context
 instance MonadContext FreeV SLam where
-  localVars = return mempty
+  getLocalVars = return mempty
   inUpdatedContext _ m = m
 
 slamAnno :: Core.Expr Void FreeV -> SLam (Anno SLambda.Expr FreeV)
 slamAnno e = Anno <$> slam e <*> (slam =<< whnf =<< typeOf e)
 
+typeArity :: Core.Type a b -> Int
+typeArity = teleLength . fst . Core.pisView
+
 slam :: Core.Expr Void FreeV -> SLam (SLambda.Expr FreeV)
 slam expr = do
   logPretty 20 "slam expr" $ pretty <$> expr
-  res <- indentLog $ case expr of
+  res <- Log.indent $ case expr of
     Core.Var v -> return $ SLambda.Var v
     Core.Meta m _ -> absurd m
     Core.Global g -> return $ SLambda.Global g
@@ -63,25 +66,28 @@ slam expr = do
       rep <- slam t'
       return $ SLambda.lam v rep e
     (Core.appsView -> (Core.Con qc@(QConstr typeName _), es)) -> do
-      (DataDefinition (DataDef params _) _, _) <- definition typeName
-      n <- constrArity qc
-      case compare (length es) n of
-        GT -> internalError $ "slam: too many args for constructor:" PP.<+> shower qc
-        EQ -> do
-          let numParams = teleLength params
-              es' = drop numParams es
-          SLambda.Con qc <$> mapM slamAnno (Vector.fromList $ snd <$> es')
-        LT -> do
-          conType <- qconstructor qc
-          let Just appliedConType = Core.typeApps conType es
-              tele = Core.piTelescope appliedConType
-          slam
-            $ quantify Core.Lam tele
-            $ Scope
-            $ Core.apps (Core.Con qc)
-            $ Vector.fromList (fmap (pure . pure) <$> es)
-            <> iforTele tele (\i _ a _ -> (a, pure $ B $ TeleVar i))
-    Core.Con _qc -> internalError "slam impossible"
+      def <- fetchDefinition typeName
+      case def of
+        ConstantDefinition {} -> panic "slam qc ConstantDefintion"
+        DataDefinition (DataDef params _) _ -> do
+          conType <- fetchQConstructor qc
+          let n = typeArity conType
+          case compare (length es) n of
+            GT -> panic $ "slam: too many args for constructor: " <> shower qc
+            EQ -> do
+              let numParams = teleLength params
+                  es' = drop numParams es
+              SLambda.Con qc <$> mapM slamAnno (Vector.fromList $ snd <$> es')
+            LT -> do
+              let Just appliedConType = Core.typeApps conType es
+                  tele = Core.piTelescope appliedConType
+              slam
+                $ quantify Core.Lam tele
+                $ Scope
+                $ Core.apps (Core.Con qc)
+                $ Vector.fromList (fmap (pure . pure) <$> es)
+                <> iforTele tele (\i _ a _ -> (a, pure $ B $ TeleVar i))
+    Core.Con _qc -> panic "slam impossible"
     Core.App e1 _ e2 -> SLambda.App <$> slam e1 <*> slamAnno e2
     Core.Case e brs _retType -> SLambda.Case <$> slamAnno e <*> slamBranches brs
     Core.Let ds scope -> do
@@ -104,7 +110,7 @@ slamBranches
   :: Branches Plicitness (Core.Expr Void) FreeV
   -> SLam (Branches () SLambda.Expr FreeV)
 slamBranches (ConBranches cbrs) = do
-  cbrs' <- indentLog $ forM cbrs $ \(ConBranch c tele brScope) -> do
+  cbrs' <- Log.indent $ forM cbrs $ \(ConBranch c tele brScope) -> do
     vs <- forTeleWithPrefixM tele $ \h p s vs -> freeVar h p $ instantiateTele pure vs s
     reps <- forM vs $ \v -> do
       t' <- whnf $ varType v

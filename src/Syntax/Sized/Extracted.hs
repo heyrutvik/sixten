@@ -4,6 +4,7 @@ module Syntax.Sized.Extracted where
 import Protolude hiding (Type, TypeRep)
 
 import Data.Deriving
+import Data.HashMap.Lazy(HashMap)
 import Data.Text(Text)
 import Data.Vector(Vector)
 
@@ -35,11 +36,12 @@ data Declaration = Declaration
 data Submodule contents = Submodule
   { submoduleExternDecls :: [Declaration]
   , submoduleExterns :: [(Language, Text)]
+  , submoduleSignatures :: HashMap QName (Signature ReturnIndirect)
   , submoduleContents :: contents
   } deriving (Eq, Foldable, Functor, Ord, Show, Traversable)
 
 emptySubmodule :: contents -> Submodule contents
-emptySubmodule = Submodule mempty mempty
+emptySubmodule contents = (\() -> contents) <$> mempty
 
 -------------------------------------------------------------------------------
 -- Helpers
@@ -110,10 +112,10 @@ instance v ~ Doc => Pretty (Expr v) where
       "of" <$$> indent 2 (prettyM brs)
 
 instance Semigroup innards => Semigroup (Submodule innards) where
-  Submodule a1 b1 c1 <> Submodule a2 b2 c2
-    = Submodule (a1 <> a2) (b1 <> b2) (c1 <> c2)
+  Submodule a1 b1 c1 d1 <> Submodule a2 b2 c2 d2
+    = Submodule (a1 <> a2) (b1 <> b2) (c1 <> c2) (d1 <> d2)
 
 -- TODO remove Semigroup constraint when ghc has been updated
 instance (Monoid innards, Semigroup innards) => Monoid (Submodule innards) where
-  mempty = Submodule mempty mempty mempty
+  mempty = Submodule mempty mempty mempty mempty
   mappend = (<>)

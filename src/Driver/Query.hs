@@ -7,10 +7,9 @@ import Protolude hiding (TypeRep)
 
 import Data.HashMap.Lazy(HashMap)
 import Data.HashSet(HashSet)
-import Data.Vector(Vector)
 import Rock
 
-import Backend.Target
+import Backend.Target as Target
 import Error
 import Syntax
 import qualified Syntax.Core as Core
@@ -57,3 +56,6 @@ fetchInstances name mname = fmap (fmap biopen) <$> fetch (Instances name mname)
 
 fetchIntRep :: MonadFetch Query m => m TypeRep
 fetchIntRep = TypeRep.intRep <$> fetch Driver.Query.Target
+
+fetchTypeRep :: MonadFetch Query m => m TypeRep
+fetchTypeRep = TypeRep.typeRep <$> fetch Driver.Query.Target

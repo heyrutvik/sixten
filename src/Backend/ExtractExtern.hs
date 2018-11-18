@@ -4,15 +4,18 @@ module Backend.ExtractExtern where
 import Protolude
 
 import Control.Monad.Fail
+import Data.HashMap.Lazy(HashMap)
 import qualified Data.HashMap.Lazy as HashMap
 import qualified Data.HashSet as HashSet
 import qualified Data.Text as Text
 import Data.Text(Text)
 import Data.Vector(Vector)
 import qualified Data.Vector as Vector
+import Rock
 
 import Backend.Target
-import Fresh
+import Driver.Query as Query
+import Effect
 import Syntax
 import Syntax.Sized.Anno
 import qualified Syntax.Sized.Definition as Sized
@@ -43,7 +46,7 @@ import VIX
 --    x
 -- }
 --
--- The extern block is replaced with as call to f(a, b, c, x) in the Sixten
+-- The extern block is replaced with a call to f(a, b, c, x) in the Sixten
 -- code.
 --
 -- We create functions that use the C calling convention for the splices that
@@ -58,19 +61,20 @@ data ExtractState = ExtractState
   , extractedCode :: Tsil Text
   , extractedDecls :: Tsil Extracted.Declaration
   , extractedCallbacks :: Tsil (QName, Closed (Sized.Function Extracted.Expr))
-  , target :: Target
+  , extractedSignatures :: !(HashMap QName (Signature ReturnIndirect))
   }
 
 newtype Extract a = Extract { unExtract :: StateT ExtractState VIX a }
-  deriving (Functor, Applicative, Monad, MonadState ExtractState, MonadFail, MonadFresh, MonadVIX, MonadIO)
+  deriving (Functor, Applicative, Monad, MonadState ExtractState, MonadFresh, MonadIO, MonadFetch Query)
 
-runExtract :: [QName] -> Target -> Extract a -> VIX ([(QName, Closed (Sized.Function Extracted.Expr))], Extracted.Submodule a)
-runExtract names tgt (Extract m) = do
-  (a, s) <- runStateT m (ExtractState names mempty mempty mempty tgt)
+runExtract :: [QName] -> Extract a -> VIX ([(QName, Closed (Sized.Function Extracted.Expr))], Extracted.Submodule a)
+runExtract names (Extract m) = do
+  (a, s) <- runStateT m $ ExtractState names mempty mempty mempty mempty
   let decls = toList $ extractedDecls s
-      defs = toList $ extractedCode s
+      defs = (,) C <$> toList (extractedCode s)
       cbs = toList $ extractedCallbacks s
-  return (cbs, Extracted.Submodule decls ((,) C <$> defs) a)
+      sigs = extractedSignatures s
+  return (cbs, Extracted.Submodule decls defs sigs a)
 
 freshName :: Extract QName
 freshName = do
@@ -89,6 +93,12 @@ emitCallback
   -> Closed (Sized.Function Extracted.Expr)
   -> Extract ()
 emitCallback name fun = modify $ \s -> s { extractedCallbacks = Snoc (extractedCallbacks s) (name, fun) }
+
+emitSignature
+  :: QName
+  -> Signature ReturnIndirect
+  -> Extract ()
+emitSignature name sig = modify $ \s -> s { extractedSignatures = HashMap.insert name sig $ extractedSignatures s }
 
 type FV = FreeVar () Extracted.Expr
 
@@ -126,7 +136,7 @@ extractExtern
   -> Extern (Anno Extracted.Expr FV)
   -> Extract (Extracted.Expr FV)
 extractExtern retType (Extern C parts) = do
-  tgt <- gets target
+  tgt <- fetch Query.Target
 
   let freeVars = foldMap (foldMap toHashSet) parts
       argNames =
@@ -204,8 +214,7 @@ forwardDeclare name retType argDirs = do
     <> "("
     <> Text.intercalate ", " (toList $ externType <$> argDirs)
     <> ");"
-  addSignatures
-    $ HashMap.singleton name
+  emitSignature name
     $ FunctionSig (CompatibleWith C) (toReturnDirection Projection retDir) argDirs
 
 mangle :: QName -> Name
@@ -249,11 +258,10 @@ extractBranches (LitBranches lbrs def) = LitBranches <$> sequence
   ] <*> extractExpr def
 
 extractDef
-  :: Target
-  -> QName
+  :: QName
   -> Closed (Sized.Definition Lifted.Expr)
   -> VIX [(QName, Extracted.Submodule (Closed (Sized.Definition Extracted.Expr)))]
-extractDef tgt qname@(QName mname name) def = fmap flatten $ runExtract names tgt $ case open def of
+extractDef qname@(QName mname name) def = fmap flatten $ runExtract names $ case open def of
   Sized.FunctionDef vis cl (Sized.Function tele scope) ->
     fmap (close noFV . Sized.FunctionDef vis cl) $ do
       vs <- forTeleWithPrefixM tele $ \h () s vs -> do

@@ -4,14 +4,12 @@ module Backend.Lift where
 import Protolude
 
 import Control.Monad.Except
-import Control.Monad.Fail
 import Data.HashSet(HashSet)
 import qualified Data.HashSet as HashSet
 import Data.Vector(Vector)
 import qualified Data.Vector as Vector
 
-import Fresh
-import MonadLog
+import Effect
 import Syntax
 import Syntax.Sized.Anno
 import qualified Syntax.Sized.Definition as Sized
@@ -28,19 +26,25 @@ data LiftState thing = LiftState
   }
 
 newtype Lift thing m a = Lift (StateT (LiftState thing) m a)
-  deriving (Functor, Applicative, Monad, MonadState (LiftState thing), MonadTrans, MonadFail, MonadFresh, MonadVIX, MonadIO, MonadError e, MonadLog)
+  deriving (Functor, Applicative, Monad, MonadState (LiftState thing), MonadTrans, MonadFresh, MonadIO, MonadLog)
 
-freshName :: MonadFail m => Lift thing m QName
+freshName :: Monad m => Lift thing m QName
 freshName = do
-  name:names <- gets freshNames
-  modify $ \s -> s { freshNames = names }
-  return name
+  fnames <- gets freshNames
+  case fnames of
+    [] -> panic "Lift: no more fresh names"
+    name:names -> do
+      modify $ \s -> s { freshNames = names }
+      return name
 
-freshNameWithHint :: MonadFail m => Name -> Lift thing m QName
+freshNameWithHint :: Monad m => Name -> Lift thing m QName
 freshNameWithHint hint = do
-  QName mname name:names <- gets freshNames
-  modify $ \s -> s { freshNames = names }
-  return $ QName mname $ name <> "-" <> hint
+  fnames <- gets freshNames
+  case fnames of
+    [] -> panic "Lift: no more fresh names"
+    QName mname name:names -> do
+      modify $ \s -> s { freshNames = names }
+      return $ QName mname $ name <> "-" <> hint
 
 liftNamedThing :: Monad m => QName -> thing -> Lift thing m ()
 liftNamedThing name thing =
@@ -48,7 +52,7 @@ liftNamedThing name thing =
     { liftedThings = (name, thing) : liftedThings s
     }
 
-liftThing :: MonadFail m => thing -> Lift thing m QName
+liftThing :: Monad m => thing -> Lift thing m QName
 liftThing thing = do
   name <- freshName
   liftNamedThing name thing
@@ -82,7 +86,7 @@ liftExpr expr = case expr of
   SLambda.Let ds scope -> liftLet ds scope
   SLambda.Case e brs -> Lifted.Case <$> liftAnnoExpr e <*> liftBranches brs
   SLambda.Lams tele s -> liftLambda tele s
-  SLambda.Lam {} -> internalError "liftExpr Lam"
+  SLambda.Lam {} -> panic "liftExpr Lam"
   SLambda.ExternCode c retType -> Lifted.ExternCode <$> mapM liftAnnoExpr c <*> liftExpr retType
 
 liftAnnoExpr
