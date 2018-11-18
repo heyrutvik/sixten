@@ -53,6 +53,7 @@ executable sixten
                        Command.LanguageServer.Hover
                        Command.Run
                        Command.Test
+                       Driver
                        Driver.Query
                        Driver.Rules
                        Effect
@@ -86,8 +87,6 @@ executable sixten
                        Frontend.ResolveNames
                        Paths_sixten
                        Pretty
-                       Processor.File
-                       Processor.Files
                        Processor.Result
                        Syntax
                        Syntax.Annotation

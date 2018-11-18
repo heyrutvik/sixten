@@ -3,14 +3,12 @@ module Command.Check where
 
 import Protolude
 
-import qualified Data.Text.IO as Text
 import Options.Applicative as Options
 import Util
 
 import qualified Backend.Target as Target
 import Command.Check.Options
-import qualified Processor.Files as Processor
-import qualified Processor.Result as Processor
+import qualified Driver
 
 optionsParserInfo :: ParserInfo Options
 optionsParserInfo = info (helper <*> optionsParser)
@@ -44,18 +42,17 @@ check
   :: Options
   -> IO ()
 check opts = withLogHandle (logFile opts) $ \logHandle -> do
-  procResult <- Processor.checkFiles Processor.Arguments
-        { Processor.sourceFiles = inputFiles opts
-        , Processor.assemblyDir = ""
-        , Processor.target = Target.defaultTarget
-        , Processor.logHandle = logHandle
-        , Processor.verbosity = verbosity opts
-        , Processor.silentErrors = False
-        }
-  case procResult of
-    Processor.Failure _ -> Text.putStrLn "Type checking failed"
-    Processor.Success [] -> Text.putStrLn "Type checking completed successfully"
-    Processor.Success (_:_) -> Text.putStrLn "Type checking failed"
+  errors <- Driver.checkFiles Driver.Arguments
+    { Driver.sourceFiles = inputFiles opts
+    , Driver.assemblyDir = ""
+    , Driver.target = Target.defaultTarget
+    , Driver.logHandle = logHandle
+    , Driver.verbosity = verbosity opts
+    , Driver.silentErrors = False
+    }
+  case errors of
+    [] -> putText "Type checking completed successfully"
+    _ -> putText "Type checking failed"
   where
     withLogHandle Nothing k = k stdout
     withLogHandle (Just file) k = Util.withFile file WriteMode k
