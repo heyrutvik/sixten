@@ -7,10 +7,12 @@ import qualified Data.HashMap.Lazy as HashMap
 import qualified Data.HashSet as HashSet
 import Data.Vector(Vector)
 import qualified Data.Vector as Vector
+import Rock
 
 import Backend.Lift(runLift, liftThing, Lift)
 import qualified Builtin
 import qualified Builtin.Names as Builtin
+import Driver.Query
 import FreeVar
 import Syntax
 import Syntax.Sized.Anno
@@ -52,11 +54,13 @@ convertDefinitionsM defs = do
           typeScope = close (panic "convertDefinitions") $ abstract (teleAbstraction vs) convertedType
       return $ Just (name, (tele', typeScope))
     Sized.ConstantDef _ (Sized.Constant (Anno (Global glob) _)) -> do
-      msig <- convertedSignature glob
+      msig <- fetch $ ConvertedSignature glob
       return $ (,) name <$> msig
     _ -> return Nothing
 
-  addConvertedSignatures $ HashMap.fromList $ catMaybes funSigs
+
+  -- TODO split function here for the new driver
+  -- addConvertedSignatures $ HashMap.fromList $ catMaybes funSigs
 
   forM defs $ \(name, def) -> do
     def' <- convertDefinition def
@@ -79,7 +83,7 @@ convertDefinition (Closed (Sized.FunctionDef vis cl (Sized.Function tele scope))
     $ Sized.FunctionDef vis cl
     $ Sized.function (Vector.zip vs es) expr'
 convertDefinition (Closed (Sized.ConstantDef vis (Sized.Constant expr@(Anno (Global glob) sz)))) = do
-  msig <- convertedSignature glob
+  msig <- fetch $ ConvertedSignature glob
   expr' <- case msig of
     Nothing -> convertAnnoExpr expr
     Just _ -> do
@@ -104,7 +108,7 @@ convertExpr :: Expr FV -> ClosureConvert (Expr FV)
 convertExpr expr = case expr of
   Var v -> return $ Var v
   Global g -> do
-    msig <- convertedSignature g
+    msig <- fetch $ ConvertedSignature g
     case msig of
       Nothing -> return $ Global g
       Just sig -> knownCall g sig mempty
@@ -112,7 +116,7 @@ convertExpr expr = case expr of
   Con qc es -> Con qc <$> mapM convertAnnoExpr es
   (callsView -> Just (Global g, es)) -> do
     es' <- mapM convertAnnoExpr es
-    msig <- convertedSignature g
+    msig <- fetch $ ConvertedSignature g
     case msig of
       Nothing -> unknownCall (Global g) es'
       Just sig -> knownCall g sig es'
@@ -139,8 +143,8 @@ unknownCall
   -> Vector (Anno Expr FV)
   -> ClosureConvert (Expr FV)
 unknownCall e es = do
-  ptrRep <- MkType <$> getPtrRep
-  intRep <- MkType <$> getIntRep
+  ptrRep <- MkType <$> fetchPtrRep
+  intRep <- MkType <$> fetchIntRep
   return
     $ Call (global $ Builtin.applyName $ Vector.length es)
     $ Vector.cons (Anno e ptrRep)
@@ -153,9 +157,9 @@ knownCall
   -> ClosureConvert (Expr FV)
 knownCall f (Closed tele, Closed returnTypeScope) args
   | numArgs < arity = do
-    target <- getTarget
-    piRep <- Lit . TypeRep <$> getPiRep
-    intRep <- Lit . TypeRep <$> getIntRep
+    target <- fetch Target
+    piRep <- Lit . TypeRep <$> fetchPiRep
+    intRep <- Lit . TypeRep <$> fetchIntRep
     fNumArgs <- liftClosureFun f (close identity tele, close identity returnTypeScope) numArgs
     return
       $ Con Builtin.Ref
@@ -182,10 +186,10 @@ liftClosureFun f (Closed tele, Closed returnTypeScope) numCaptured = do
     v <- freeVar h ()
     return (v, instantiateTele pure (fst <$> vs) s)
 
-  typeRep <- MkType <$> getTypeRep
-  ptrRep <- MkType <$> getPtrRep
-  piRep <- MkType <$> getPiRep
-  intRep <- MkType <$> getIntRep
+  typeRep <- MkType <$> fetchTypeRep
+  ptrRep <- MkType <$> fetchPtrRep
+  piRep <- MkType <$> fetchPiRep
+  intRep <- MkType <$> fetchIntRep
 
   let (capturedArgs, remainingParams) = Vector.splitAt numCaptured vs
   this <- freeVar "this" ()

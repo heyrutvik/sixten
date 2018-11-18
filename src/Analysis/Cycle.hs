@@ -11,6 +11,7 @@ import qualified Data.Text.Prettyprint.Doc as PP
 import qualified Data.Vector as Vector
 
 import qualified Builtin.Names as Builtin
+import Effect
 import Error
 import Syntax
 import Syntax.Core

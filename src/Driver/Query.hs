@@ -16,6 +16,7 @@ import qualified Syntax.Core as Core
 import qualified Syntax.Pre.Definition as Pre
 import qualified Syntax.Pre.Scoped as Pre
 import qualified Syntax.Pre.Unscoped as Unscoped
+import qualified Syntax.Sized.Lifted as Lifted
 import TypeRep
 
 type ModuleDefinitions = HashMap QName (SourceLoc, Unscoped.TopLevelDefinition)
@@ -42,6 +43,7 @@ data Query a where
   Instances :: QName -> ModuleName -> Query [(QName, Biclosed Core.Expr)]
 
   Signature :: QName -> Query (Maybe (Signature ReturnIndirect))
+  ConvertedSignature :: QName -> Query (Maybe Lifted.FunSignature)
 
 -- Derived queries
 fetchModuleHeader :: MonadFetch Query m => FilePath -> m ModuleHeader

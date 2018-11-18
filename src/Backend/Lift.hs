@@ -8,6 +8,7 @@ import Data.HashSet(HashSet)
 import qualified Data.HashSet as HashSet
 import Data.Vector(Vector)
 import qualified Data.Vector as Vector
+import Rock
 
 import Effect
 import Syntax
@@ -26,7 +27,7 @@ data LiftState thing = LiftState
   }
 
 newtype Lift thing m a = Lift (StateT (LiftState thing) m a)
-  deriving (Functor, Applicative, Monad, MonadState (LiftState thing), MonadTrans, MonadFresh, MonadIO, MonadLog)
+  deriving (Functor, Applicative, Monad, MonadState (LiftState thing), MonadTrans, MonadFresh, MonadIO, MonadLog, MonadFetch q)
 
 freshName :: Monad m => Lift thing m QName
 freshName = do
