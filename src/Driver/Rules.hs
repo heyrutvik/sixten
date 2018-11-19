@@ -13,7 +13,6 @@ import Backend.Target
 import Driver.Query
 import Error
 import qualified Frontend.Parse as Parse
-import Processor.Result
 import Syntax
 
 noError :: (Monoid w, Functor f) => f a -> f (a, w)
@@ -27,10 +26,10 @@ rules inputFiles target (Writer query) = case query of
   ParsedModule file -> Task $ do
     text <- fetch $ File file
     case Parse.parseText Parse.modul text file of
-      Failure errs -> do
+      Left err -> do
         let mh = ModuleHeader "Main" mempty mempty
-        return ((mh, mempty), errs)
-      Success a -> return (a, mempty)
+        return ((mh, mempty), pure err)
+      Right a -> return (a, mempty)
   ModuleHeaders -> Task $ noError $ do
     fileNames <- fetch Files
     result <- for fileNames $ \file ->

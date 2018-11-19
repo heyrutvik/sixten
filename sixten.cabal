@@ -87,7 +87,6 @@ executable sixten
                        Frontend.ResolveNames
                        Paths_sixten
                        Pretty
-                       Processor.Result
                        Syntax
                        Syntax.Annotation
                        Syntax.Branches

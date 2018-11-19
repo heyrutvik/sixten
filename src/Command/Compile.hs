@@ -15,9 +15,8 @@ import qualified Backend.Target as Target
 import qualified Command.Check as Check
 import qualified Command.Check.Options as Check
 import Command.Compile.Options
+import qualified Driver
 import Error
-import qualified Processor.Files as Processor
-import qualified Processor.Result as Processor
 import Syntax.Extern
 import Util
 
@@ -74,34 +73,34 @@ optionsParser = Options
 compile
   :: Options
   -> Bool
-  -> (Processor.Result (FilePath, [Error]) -> IO k)
+  -> (Maybe FilePath -> [Error] -> IO k)
   -> IO k
 compile opts silent onResult = case maybe (Right Target.defaultTarget) Target.findTarget $ target opts of
-  Left err -> onResult $ Processor.Failure $ pure err
+  Left err -> onResult Nothing $ pure err
   Right tgt ->
     withAssemblyDir (assemblyDir opts) $ \asmDir ->
     withOutputFile (maybeOutputFile opts) $ \outputFile ->
     withLogHandle (Check.logFile . checkOptions $ opts) $ \logHandle -> do
       let linkedLlFileName = asmDir </> firstFileName <.> "linked" <.> "ll"
-      procResult <- Processor.processFiles Processor.Arguments
-        { Processor.sourceFiles = inputFiles
-        , Processor.assemblyDir = asmDir
-        , Processor.target = tgt
-        , Processor.logHandle = logHandle
-        , Processor.verbosity = Check.verbosity . checkOptions $ opts
-        , Processor.silentErrors = silent
+      (mresult, errs) <- Driver.compileFiles outputFile Driver.Arguments
+        { Driver.sourceFiles = inputFiles
+        , Driver.assemblyDir = asmDir
+        , Driver.target = tgt
+        , Driver.logHandle = logHandle
+        , Driver.verbosity = Check.verbosity . checkOptions $ opts
+        , Driver.silentErrors = silent
         }
-      case procResult of
-        Processor.Failure errs -> onResult $ Processor.Failure errs
-        Processor.Success (result, errs) -> do
+      case mresult of
+        Nothing -> onResult Nothing errs
+        Just result -> do
           Compile.compile opts Compile.Arguments
-            { Compile.cFiles = [cFile | (C, cFile) <- Processor.externFiles result]
-            , Compile.llFiles = Processor.llFiles result
+            { Compile.cFiles = [cFile | (C, cFile) <- Driver.externFiles result]
+            , Compile.llFiles = Driver.llFiles result
             , Compile.linkedLlFileName = linkedLlFileName
             , Compile.target = tgt
             , Compile.outputFile = outputFile
             }
-          onResult $ Processor.Success (outputFile, errs)
+          onResult (Just outputFile) errs
   where
     -- TODO should use the main file instead
     firstInputFile = case inputFiles of
@@ -135,6 +134,8 @@ compile opts silent onResult = case maybe (Right Target.defaultTarget) Target.fi
 command :: ParserInfo (IO ())
 command = go <$> optionsParserInfo
   where
-    go opts = compile opts False $ \case
-      Processor.Failure errs -> mapM_ printError errs
-      Processor.Success (_fp, _) -> return ()
+    go opts = compile opts False $ \maybeOutputFile errs -> do
+      mapM_ printError errs
+      case maybeOutputFile of
+        Nothing -> exitFailure
+        Just _ -> exitSuccess

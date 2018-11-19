@@ -10,7 +10,6 @@ import System.Process
 import qualified Command.Compile as Compile
 import qualified Command.Compile.Options as Compile
 import Error
-import qualified Processor.Result as Processor
 
 data Options = Options
   { compileOptions :: Compile.Options
@@ -33,9 +32,11 @@ optionsParser = Options
     )
 
 run :: Options -> IO ()
-run opts = Compile.compile (compileOptions opts) False $ \case
-  Processor.Failure errs -> mapM_ printError errs
-  Processor.Success (f, _) -> callProcess f $ maybe [] words $ commandLineArguments opts
+run opts = Compile.compile (compileOptions opts) False $ \mfp errs -> do
+  mapM_ printError errs
+  case mfp of
+    Nothing -> exitFailure
+    Just fp -> callProcess fp $ maybe [] words $ commandLineArguments opts
 
 command :: ParserInfo (IO ())
 command = run <$> optionsParserInfo

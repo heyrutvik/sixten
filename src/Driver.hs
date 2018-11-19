@@ -6,6 +6,9 @@ import Backend.Target
 import Driver.Query
 import Driver.Rules
 import Error
+import Syntax
+import qualified Syntax.Core as Core
+import Syntax.Extern
 
 data Arguments = Arguments
   { sourceFiles :: NonEmpty FilePath
@@ -16,13 +19,29 @@ data Arguments = Arguments
   , silentErrors :: !Bool
   } deriving (Eq, Show)
 
+data Status
+  = Failure
+  | Success
+  deriving (Eq, Show)
+
 checkFiles
   :: Arguments
   -> IO [Error]
 checkFiles = undefined
 
+checkVirtualFile
+  :: FilePath
+  -> Text
+  -> IO ([[(QName, SourceLoc, ClosedDefinition Core.Expr, Biclosed Core.Expr)]], [Error])
+checkVirtualFile = undefined
+
+data CompileResult = CompileResult
+  { externFiles :: [(Language, FilePath)]
+  , llFiles :: [FilePath]
+  }
+
 compileFiles
-  :: Arguments
-  -> FilePath
-  -> IO [Error]
-compileFiles args outputFile = undefined
+  :: FilePath
+  -> Arguments
+  -> IO (Maybe CompileResult, [Error])
+compileFiles outputFile args = undefined

@@ -51,8 +51,12 @@ check opts = withLogHandle (logFile opts) $ \logHandle -> do
     , Driver.silentErrors = False
     }
   case errors of
-    [] -> putText "Type checking completed successfully"
-    _ -> putText "Type checking failed"
+    [] -> do
+      putText "Type checking completed successfully"
+      exitSuccess
+    _ -> do
+      putText "Type checking failed"
+      exitFailure
   where
     withLogHandle Nothing k = k stdout
     withLogHandle (Just file) k = Util.withFile file WriteMode k
