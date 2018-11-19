@@ -1,4 +1,4 @@
-{-# LANGUAGE DefaultSignatures, GADTs, OverloadedStrings, PatternSynonyms #-}
+{-# LANGUAGE GADTs, OverloadedStrings, PatternSynonyms #-}
 module Error where
 
 import Protolude hiding (TypeError)

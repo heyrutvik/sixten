@@ -3,7 +3,6 @@ module Backend.ExtractExtern where
 
 import Protolude
 
-import Control.Monad.Fail
 import Data.HashMap.Lazy(HashMap)
 import qualified Data.HashMap.Lazy as HashMap
 import qualified Data.HashSet as HashSet
@@ -78,9 +77,12 @@ runExtract names (Extract m) = do
 
 freshName :: Extract QName
 freshName = do
-  name:names <- gets freshNames
-  modify $ \s -> s { freshNames = names }
-  return name
+  fnames <- gets freshNames
+  case fnames of
+    [] -> panic "freshName: no more names"
+    name:names -> do
+      modify $ \s -> s { freshNames = names }
+      return name
 
 emitDecl :: Extracted.Declaration -> Extract ()
 emitDecl d = modify $ \s -> s { extractedDecls = Snoc (extractedDecls s) d }

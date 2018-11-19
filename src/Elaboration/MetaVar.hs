@@ -6,7 +6,6 @@ module Elaboration.MetaVar where
 import Prelude(showsPrec, showString, showChar, showParen)
 import Protolude
 
-import Control.Lens
 import Data.Bitraversable
 import Data.IORef
 import Data.String
@@ -20,7 +19,6 @@ import Syntax
 import Syntax.Core
 import TypedFreeVar
 import Util
-import VIX
 
 type MetaRef = IORef (Maybe (Closed (Expr MetaVar)))
 

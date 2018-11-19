@@ -21,7 +21,6 @@ import Syntax.Core
 import Syntax.Core.Pattern
 import TypedFreeVar
 import Util
-import VIX
 
 type PatM = Pat CoreM FreeV
 -- | An expression possibly containing a pattern-match failure variable

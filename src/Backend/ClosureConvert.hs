@@ -3,7 +3,6 @@ module Backend.ClosureConvert where
 
 import Protolude hiding (typeRep)
 
-import qualified Data.HashMap.Lazy as HashMap
 import qualified Data.HashSet as HashSet
 import Data.Vector(Vector)
 import qualified Data.Vector as Vector

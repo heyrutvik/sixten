@@ -10,8 +10,6 @@ module Elaboration.Monad where
 import Protolude
 
 import Control.Lens
-import Control.Monad.Except
-import Control.Monad.Fail
 import Control.Monad.Reader
 import qualified Data.Vector as Vector
 import Rock
@@ -25,7 +23,6 @@ import qualified Syntax.Core as Core
 import qualified Syntax.Pre.Scoped as Pre
 import TypedFreeVar
 import Util
-import Util.Tsil(Tsil)
 import qualified Util.Tsil as Tsil
 import VIX
 

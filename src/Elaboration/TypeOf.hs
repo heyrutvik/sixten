@@ -3,7 +3,6 @@ module Elaboration.TypeOf where
 
 import Protolude
 
-import Control.Monad.Except
 import qualified Data.Text.Prettyprint.Doc as PP
 
 import qualified Builtin.Names as Builtin
@@ -16,7 +15,6 @@ import Syntax
 import Syntax.Core
 import TypedFreeVar
 import Util
-import VIX
 
 type ExprFreeVar meta = FreeVar Plicitness (Expr meta)
 

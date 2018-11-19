@@ -4,9 +4,6 @@ module Backend.SLam where
 import Protolude
 
 import Bound.Scope hiding (instantiate1)
-import Control.Monad.Except
-import Control.Monad.Fail
-import qualified Data.Text.Prettyprint.Doc as PP
 import qualified Data.Vector as Vector
 
 import qualified Builtin.Names as Builtin

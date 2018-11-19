@@ -1,4 +1,4 @@
-{-# LANGUAGE LambdaCase, OverloadedStrings #-}
+{-# LANGUAGE OverloadedStrings #-}
 module Command.Test where
 
 import Protolude hiding (TypeError)
@@ -45,10 +45,10 @@ optionsParser = Options
   <*> Compile.optionsParser
 
 test :: Options -> IO ()
-test opts = Compile.compile (compileOptions opts) True $ \maybeOutputFile errs ->
-  case (maybeOutputFile, errs) of
+test opts = Compile.compile (compileOptions opts) True $ \mfp errs ->
+  case (mfp, errs) of
     (Just fp, []) -> onCompileSuccess fp
-    (_, errs) -> onCompileError errs
+    _ -> onCompileError errs
   where
     onCompileError errs = case errs of
       SyntaxError {}:_

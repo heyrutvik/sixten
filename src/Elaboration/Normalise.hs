@@ -1,9 +1,8 @@
-{-# LANGUAGE ConstraintKinds, FlexibleContexts, MonadComprehensions, OverloadedStrings, TupleSections, ViewPatterns, RecursiveDo #-}
+{-# LANGUAGE ConstraintKinds, FlexibleContexts, MonadComprehensions, OverloadedStrings, TupleSections, ViewPatterns #-}
 module Elaboration.Normalise where
 
 import Protolude hiding (TypeRep)
 
-import Control.Monad.Except
 import Data.IORef
 import qualified Data.List.NonEmpty as NonEmpty
 import qualified Data.Vector as Vector
@@ -20,7 +19,6 @@ import TypedFreeVar
 import TypeRep(TypeRep)
 import qualified TypeRep
 import Util
-import VIX
 
 type ExprFreeVar meta = FreeVar Plicitness (Expr meta)
 

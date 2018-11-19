@@ -474,8 +474,8 @@ generateBranches (Anno caseExpr caseExprType) branches brCont = do
         e0 <- load e0IntPtr align `named` "tag"
 
         constrIndices <- Traversable.forM cbrs $ \(ConBranch qc _ _) -> do
-          Just qcIndex <- fetch $ ConstrIndex qc
-          return $ LLVM.Int intBits $ fromIntegral qcIndex
+          qcIndex <- fromMaybe (panic "no constrIndex") <$> fetch (ConstrIndex qc)
+          return $ LLVM.Int intBits qcIndex
 
         switch e0 failBlock $ zip constrIndices branchBlocks
       else
@@ -640,72 +640,75 @@ generateConstant visibility name (Constant aexpr@(Anno expr _)) = do
 
 generateFunction :: Visibility -> QName -> Function Expr Var -> ModuleGen ()
 generateFunction visibility name (Function args funScope) = do
-  msig@(Just (FunctionSig _ retDir argDirs)) <- fetch $ Signature name
-  ((retType, params), basicBlocks) <- runIRBuilderT emptyIRBuilder $ do
-    paramVars <- iforMTele args $ \i h _ _sz -> do
-      let d = argDirs Vector.! i
-      case d of
-        Direct TypeRep.UnitRep -> return ([], VoidVar)
-        Direct rep -> do
-          n <- IRBuilder.fresh `hinted` h
-          return
-            ( [LLVM.Parameter (directType rep) n []]
-            , DirectVar rep $ LLVM.LocalReference (directType rep) n
-            )
-        Indirect -> do
-          n <- IRBuilder.fresh `hinted` h
-          return
-            ( [LLVM.Parameter indirectType n []]
-            , IndirectVar $ LLVM.LocalReference indirectType n
-            )
+  msig <- fetch $ Signature name
+  case msig of
+    Just (FunctionSig _ retDir argDirs) -> do
+      ((retType, params), basicBlocks) <- runIRBuilderT emptyIRBuilder $ do
+        paramVars <- iforMTele args $ \i h _ _sz -> do
+          let d = argDirs Vector.! i
+          case d of
+            Direct TypeRep.UnitRep -> return ([], VoidVar)
+            Direct rep -> do
+              n <- IRBuilder.fresh `hinted` h
+              return
+                ( [LLVM.Parameter (directType rep) n []]
+                , DirectVar rep $ LLVM.LocalReference (directType rep) n
+                )
+            Indirect -> do
+              n <- IRBuilder.fresh `hinted` h
+              return
+                ( [LLVM.Parameter indirectType n []]
+                , IndirectVar $ LLVM.LocalReference indirectType n
+                )
 
-    let Anno funExpr funType = instantiateAnnoTele pure (snd <$> paramVars) funScope
-        params = concat $ fst <$> paramVars
+        let Anno funExpr funType = instantiateAnnoTele pure (snd <$> paramVars) funScope
+            params = concat $ fst <$> paramVars
 
-    case retDir of
-      ReturnDirect TypeRep.UnitRep -> do
-        _ <- generateExpr funExpr $ Lit $ TypeRep TypeRep.UnitRep
-        retVoid
-        return
-          ( LLVM.void
-          , params
-          )
-      ReturnDirect rep -> do
-        res <- generateExpr funExpr $ Lit $ TypeRep rep
-        dres <- loadVar rep res
-        ret dres
-        return
-          ( directType rep
-          , params
-          )
-      ReturnIndirect OutParam -> do
-        outParamName <- IRBuilder.fresh `hinted` "return"
-        let outParam = LLVM.LocalReference indirectType outParamName
-        storeExpr funExpr funType outParam
-        retVoid
-        return
-          ( LLVM.void
-          , params <> pure (LLVM.Parameter indirectType outParamName [])
-          )
-      ReturnIndirect Projection -> do
-        res <- generateExpr funExpr funType
-        resPtr <- indirect res `named` "function-result"
-        ret resPtr
-        return
-          ( indirectType
-          , params
-          )
-  let linkage = case visibility of
-        Private -> LLVM.Private
-        Public -> LLVM.External
-  emitDefn $ LLVM.GlobalDefinition LLVM.functionDefaults
-    { LLVM.Global.name = fromQNameSig msig name
-    , LLVM.Global.callingConvention = sigCallingConvention msig
-    , LLVM.Global.basicBlocks = basicBlocks
-    , LLVM.Global.parameters = (params, False)
-    , LLVM.Global.returnType = retType
-    , LLVM.Global.linkage = linkage
-    }
+        case retDir of
+          ReturnDirect TypeRep.UnitRep -> do
+            _ <- generateExpr funExpr $ Lit $ TypeRep TypeRep.UnitRep
+            retVoid
+            return
+              ( LLVM.void
+              , params
+              )
+          ReturnDirect rep -> do
+            res <- generateExpr funExpr $ Lit $ TypeRep rep
+            dres <- loadVar rep res
+            ret dres
+            return
+              ( directType rep
+              , params
+              )
+          ReturnIndirect OutParam -> do
+            outParamName <- IRBuilder.fresh `hinted` "return"
+            let outParam = LLVM.LocalReference indirectType outParamName
+            storeExpr funExpr funType outParam
+            retVoid
+            return
+              ( LLVM.void
+              , params <> pure (LLVM.Parameter indirectType outParamName [])
+              )
+          ReturnIndirect Projection -> do
+            res <- generateExpr funExpr funType
+            resPtr <- indirect res `named` "function-result"
+            ret resPtr
+            return
+              ( indirectType
+              , params
+              )
+      let linkage = case visibility of
+            Private -> LLVM.Private
+            Public -> LLVM.External
+      emitDefn $ LLVM.GlobalDefinition LLVM.functionDefaults
+        { LLVM.Global.name = fromQNameSig msig name
+        , LLVM.Global.callingConvention = sigCallingConvention msig
+        , LLVM.Global.basicBlocks = basicBlocks
+        , LLVM.Global.parameters = (params, False)
+        , LLVM.Global.returnType = retType
+        , LLVM.Global.linkage = linkage
+        }
+    _ -> panic $ "generateFunction: Wrong sig: " <> shower msig
 
   where
     fromQNameSig

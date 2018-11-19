@@ -3,8 +3,6 @@ module Elaboration.Unify where
 
 import Protolude hiding (TypeError)
 
-import Control.Monad.Except
-import Control.Monad.Trans.Maybe
 import Data.HashSet(HashSet)
 import qualified Data.HashSet as HashSet
 import qualified Data.Text.Prettyprint.Doc as PP

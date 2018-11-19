@@ -4,7 +4,6 @@ module Elaboration.TypeCheck.Class where
 import Protolude hiding (diff, typeRep)
 
 import Control.Monad.Identity
-import qualified Data.HashMap.Lazy as HashMap
 import qualified Data.HashSet as HashSet
 import qualified Data.Text.Prettyprint.Doc as PP
 import Data.Vector(Vector)
@@ -26,8 +25,6 @@ import qualified Syntax.Pre.Scoped as Pre
 import TypedFreeVar
 import qualified TypeRep
 import Util
-import qualified Util.MultiHashMap as MultiHashMap
-import VIX
 
 checkClassDef
   :: FreeV
@@ -67,7 +64,7 @@ desugarClassDef
   -> SourceLoc
   -> ClassDef (Core.Expr MetaVar) FreeV
   -> Elaborate (Vector (FreeV, QName, SourceLoc, Definition (Core.Expr MetaVar) FreeV))
-desugarClassDef classVar name loc def@(ClassDef params ms) = do
+desugarClassDef classVar name loc (ClassDef params ms) = do
   paramVars <- forTeleWithPrefixM params $ \h p s paramVars -> do
     let t = instantiateTele pure paramVars s
     forall h p t

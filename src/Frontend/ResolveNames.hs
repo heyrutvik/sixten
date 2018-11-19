@@ -164,8 +164,8 @@ importedAliases (Import modName asName exposed) = do
 
     names
       = MultiHashMap.fromList
-      $ fmap (\n -> (fromName $ qnameName n :: PreName, n))
-      $ HashSet.toList otherNames
+      $ (\n -> (fromName $ qnameName n :: PreName, n))
+      <$> HashSet.toList otherNames
 
     exposedConstrs = case exposed of
       AllExposed -> constrs

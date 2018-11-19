@@ -15,7 +15,6 @@ import Syntax
 import qualified Syntax.Core as Core
 import TypedFreeVar
 import Util
-import VIX
 
 resolveConstr
   :: HashSet QConstr

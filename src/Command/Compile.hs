@@ -1,4 +1,4 @@
-{-# LANGUAGE CPP, FlexibleContexts, LambdaCase, OverloadedStrings #-}
+{-# LANGUAGE CPP, FlexibleContexts, OverloadedStrings #-}
 module Command.Compile where
 
 import Protolude hiding ((<.>))
@@ -134,8 +134,8 @@ compile opts silent onResult = case maybe (Right Target.defaultTarget) Target.fi
 command :: ParserInfo (IO ())
 command = go <$> optionsParserInfo
   where
-    go opts = compile opts False $ \maybeOutputFile errs -> do
+    go opts = compile opts False $ \mfp errs -> do
       mapM_ printError errs
-      case maybeOutputFile of
+      case mfp of
         Nothing -> exitFailure
         Just _ -> exitSuccess

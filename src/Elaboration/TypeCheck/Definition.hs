@@ -22,7 +22,6 @@ import qualified Syntax.Core as Core
 import qualified Syntax.Pre.Scoped as Pre
 import TypedFreeVar
 import Util
-import VIX
 
 checkAndGeneraliseTopLevelDefs
   :: Vector

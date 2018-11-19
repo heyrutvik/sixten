@@ -1,4 +1,3 @@
-{-# LANGUAGE LambdaCase #-}
 module Command.Run where
 
 import Prelude(String, words)

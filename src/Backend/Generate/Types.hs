@@ -21,7 +21,6 @@ import qualified Syntax.Extern as Extern
 import TypeRep(TypeRep)
 import qualified TypeRep
 import Util
-import VIX
 
 loadStoreAlign :: Word32
 loadStoreAlign = 1

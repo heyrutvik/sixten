@@ -20,7 +20,6 @@ import Syntax
 import Syntax.Core
 import TypedFreeVar
 import Util
-import VIX
 
 trySolveMetaVar
   :: MetaVar

@@ -4,7 +4,6 @@ module Elaboration.Subtype where
 
 import Protolude
 
-import Control.Monad.Trans.Maybe
 import Data.HashSet(HashSet)
 import qualified Data.HashSet as HashSet
 import Data.Vector(Vector)
