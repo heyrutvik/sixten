@@ -29,6 +29,8 @@ data Query a where
   Target :: Query Target
   ParsedModule :: FilePath -> Query (ModuleHeader, [(SourceLoc, Unscoped.TopLevelDefinition)])
   ModuleHeaders :: Query (HashMap FilePath ModuleHeader)
+  ModuleFiles :: Query (HashMap ModuleName FilePath)
+  ModuleFile :: ModuleName -> Query FilePath
   ModuleExports :: ModuleName -> Query (HashSet QName, HashSet QConstr)
   ResolvedModule :: ModuleName -> Query ResolvedModule
   TypeCheckedGroup :: QName -> Query TypeCheckedGroup
