@@ -12,18 +12,26 @@ import Rock
 
 import Backend.Target
 import Driver.Query
+import Effect
 import Error
 import Frontend.DupCheck as DupCheck
 import qualified Frontend.Parse as Parse
+import qualified Frontend.ResolveNames as ResolveNames
 import Syntax
 import qualified Syntax.Pre.Unscoped as Unscoped
 import Util
+import VIX
 
 noError :: (Monoid w, Functor f) => f a -> f (a, w)
 noError = fmap (, mempty)
 
-rules :: [FilePath] -> Target -> GenRules (Writer [Error] Query) Query
-rules inputFiles target (Writer query) = case query of
+rules
+  :: LogEnv
+  -> ReportEnv
+  -> [FilePath]
+  -> Target
+  -> GenRules (Writer [Error] Query) Query
+rules logEnv_ reportEnv_ inputFiles target (Writer query) = case query of
   Files -> Input $ noError $ return inputFiles
 
   File file -> Input $ noError $ readFile file
@@ -82,3 +90,8 @@ rules inputFiles target (Writer query) = case query of
         , p m
         ]
     return (defNames <> methods, conNames)
+
+  ResolvedModule moduleName_ -> Task $ do
+    defs <- fetch $ DupCheckedModule moduleName_
+    (moduleHeader_, _) <- fetch $ ParsedModule file
+    _ $ runVIX logEnv_ reportEnv_ $ ResolveNames.resolveModule moduleHeader defs

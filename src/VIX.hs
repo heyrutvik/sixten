@@ -6,7 +6,7 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TemplateHaskell #-}
-module VIX (Env(..), VIX, hoistIO) where
+module VIX(Env(..), VIX, runVIX, hoistIO) where
 
 import Protolude hiding (TypeError)
 
@@ -25,9 +25,18 @@ data Env = Env
   , _freshEnv :: !FreshEnv
   }
 
+makeLenses ''Env
+
 type VIX = ReaderT Env (Task Query)
 
-makeLenses ''Env
+runVIX :: LogEnv -> ReportEnv -> VIX a -> Task Query a
+runVIX logEnv_ reportEnv_ vix = do
+  freshEnv_ <- liftIO emptyFreshEnv
+  runReaderT vix Env
+    { _logEnv = logEnv_
+    , _reportEnv = reportEnv_
+    , _freshEnv = freshEnv_
+    }
 
 instance HasLogEnv Env where logEnv = VIX.logEnv
 instance HasReportEnv Env where reportEnv = VIX.reportEnv
