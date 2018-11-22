@@ -31,6 +31,7 @@ data Query a where
   ModuleHeaders :: Query (HashMap FilePath ModuleHeader)
   ModuleFiles :: Query (HashMap ModuleName FilePath)
   ModuleFile :: ModuleName -> Query FilePath
+  DupCheckedModule :: ModuleName -> Query (HashMap QName (SourceLoc, Unscoped.TopLevelDefinition))
   ModuleExports :: ModuleName -> Query (HashSet QName, HashSet QConstr)
   ResolvedModule :: ModuleName -> Query ResolvedModule
   TypeCheckedGroup :: QName -> Query TypeCheckedGroup

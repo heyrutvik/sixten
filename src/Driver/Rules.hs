@@ -7,13 +7,17 @@ module Driver.Rules where
 import Protolude hiding (moduleName)
 
 import qualified Data.HashMap.Lazy as HashMap
+import qualified Data.HashSet as HashSet
 import Rock
 
 import Backend.Target
 import Driver.Query
 import Error
+import Frontend.DupCheck as DupCheck
 import qualified Frontend.Parse as Parse
 import Syntax
+import qualified Syntax.Pre.Unscoped as Unscoped
+import Util
 
 noError :: (Monoid w, Functor f) => f a -> f (a, w)
 noError = fmap (, mempty)
@@ -30,7 +34,7 @@ rules inputFiles target (Writer query) = case query of
     text <- fetch $ File file
     case Parse.parseText Parse.modul text file of
       Left err -> do
-        let mh = ModuleHeader "Main" mempty mempty
+        let mh = ModuleHeader "Main" noneExposed mempty
         return ((mh, mempty), pure err)
       Right a -> return (a, mempty)
 
@@ -49,6 +53,32 @@ rules inputFiles target (Writer query) = case query of
   ModuleFile moduleName_ -> Task $ noError $
     HashMap.lookupDefault "Main" moduleName_ <$> fetch ModuleFiles
 
+  DupCheckedModule moduleName_ -> Task $ do
+    file <- fetch $ ModuleFile moduleName_
+    (moduleHeader_, defs) <- fetch $ ParsedModule file
+    return $ DupCheck.dupCheck (moduleName moduleHeader_) defs
+
   ModuleExports moduleName_ -> Task $ noError $ do
-    file <- moduleFile moduleName_
-    parsed <- fetch $ ParsedModule fp
+    file <- fetch $ ModuleFile moduleName_
+    (moduleHeader_, _) <- fetch $ ParsedModule file
+    defs <- fetch $ DupCheckedModule moduleName_
+
+    let
+      p = case moduleExposedNames moduleHeader_ of
+        AllExposed -> const True
+        Exposed names -> (`HashSet.member` toHashSet names)
+
+      defNames = HashSet.filter (p . qnameName) $ HashSet.fromMap $ void defs
+      conNames = HashSet.fromList
+        [ QConstr n c
+        | (n, (_, Unscoped.TopLevelDataDefinition _ _ cs)) <- HashMap.toList defs
+        , c <- constrName <$> cs
+        , p $ qnameName n
+        ]
+      methods = HashSet.fromList
+        [ QName n m
+        | (QName n _, (_, Unscoped.TopLevelClassDefinition _ _ ms)) <- HashMap.toList defs
+        , m <- methodName <$> ms
+        , p m
+        ]
+    return (defNames <> methods, conNames)

@@ -485,7 +485,7 @@ impor
   <*> optionalSI
     (reserved "exposing" *>% exposedNames)
   where
-    go n malias mexposed = Import n (fromMaybe n malias) (fromMaybe mempty mexposed)
+    go n malias mexposed = Import n (fromMaybe n malias) (fromMaybe noneExposed mexposed)
 
 exposedNames :: Parser ExposedNames
 exposedNames = symbol "(" *>% go <*% symbol ")"
