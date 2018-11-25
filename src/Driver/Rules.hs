@@ -8,6 +8,7 @@ import Protolude hiding (moduleName)
 
 import qualified Data.HashMap.Lazy as HashMap
 import qualified Data.HashSet as HashSet
+import Data.List(findIndex)
 import Rock
 
 import Backend.Target
@@ -159,6 +160,19 @@ rules logEnv_ inputFiles target (Writer query) = case query of
       Unscoped.TopLevelClassDefinition _ _ methods ->
         return $ Just $ (\(Method name loc _) -> (name, loc)) <$> methods
       _ -> return Nothing
+
+  ConstrIndex (QConstr typeName c) -> Task $ noError $ do
+    def <- fetchDefinition typeName
+    case def of
+      DataDefinition (DataDef _ constrDefs) _ -> do
+        case constrDefs of
+          [] -> return Nothing
+          [_] -> return Nothing
+          _ -> case findIndex ((== c) . constrName) constrDefs of
+            Nothing -> panic "fetch ConstrIndex []"
+            Just i -> return $ Just $ fromIntegral i
+      ConstantDefinition {} -> panic "fetch ConstrIndex ConstantDefinition"
+
 
 noError :: (Monoid w, Functor f) => f a -> f (a, w)
 noError = fmap (, mempty)
