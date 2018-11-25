@@ -20,23 +20,10 @@ import Frontend.DupCheck as DupCheck
 import qualified Frontend.Parse as Parse
 import qualified Frontend.ResolveNames as ResolveNames
 import Syntax
+import qualified Syntax.Core as Core
 import qualified Syntax.Pre.Unscoped as Unscoped
 import Util
 import VIX
-
-noError :: (Monoid w, Functor f) => f a -> f (a, w)
-noError = fmap (, mempty)
-
-withReportEnv :: MonadIO m => (ReportEnv -> m a) -> m (a, [Error])
-withReportEnv f = do
-  errVar <- liftIO $ newMVar []
-  a <- f ReportEnv
-    { _currentLocation = Nothing
-    , _reportAction = \err ->
-      modifyMVar_ errVar $ \errs -> pure $ err:errs
-    }
-  errs <- liftIO $ readMVar errVar
-  return (a, errs)
 
 rules
   :: LogEnv
@@ -119,7 +106,7 @@ rules logEnv_ inputFiles target (Writer query) = case query of
           ]
     return (bindingGroupMap, errs)
 
-  TypeCheckedGroup names -> Task $
+  ElaboratedGroup names -> Task $
     case toList names of
       [] -> return mempty
       name:_ -> do
@@ -140,5 +127,49 @@ rules logEnv_ inputFiles target (Writer query) = case query of
   BindingGroup name -> Task $ noError $ do
     bindingGroups <- fetch $ ResolvedModule $ qnameModule name
     case filter (HashSet.member name) $ HashMap.keys bindingGroups of
-      [] -> return mempty
+      [] -> panic "fetch BindingGroup []"
       result:_ -> return result
+
+  Type name -> Task $ noError $ do
+    bindingGroup <- fetch $ BindingGroup name
+    elaboratedGroup <- fetch $ ElaboratedGroup bindingGroup
+    let (_loc, _def, typ) = HashMap.lookupDefault (panic "fetch Type") name elaboratedGroup
+    return typ
+
+  Definition name -> Task $ noError $ do
+    bindingGroup <- fetch $ BindingGroup name
+    elaboratedGroup <- fetch $ ElaboratedGroup bindingGroup
+    let (_loc, def, _typ) = HashMap.lookupDefault (panic "fetch Type") name elaboratedGroup
+    return def
+
+  QConstructor (QConstr typeName c) -> Task $ noError $ do
+    def <- fetchDefinition typeName
+    case def of
+      DataDefinition ddef _ -> do
+        let qcs = Core.quantifiedConstrTypes ddef implicitise
+        case filter ((== c) . constrName) qcs of
+          [] -> panic "fetch QConstructor []"
+          cdef:_ -> return $ biclose identity identity $ constrType cdef
+      ConstantDefinition {} -> panic "fetch QConstructor ConstantDefinition"
+
+  ClassMethods className -> Task $ noError $ do
+    dupChecked <- fetch $ DupCheckedModule $ qnameModule className
+    let (_loc, def) = HashMap.lookupDefault (panic "fetch ClassMethods") className dupChecked
+    case def of
+      Unscoped.TopLevelClassDefinition _ _ methods ->
+        return $ Just $ (\(Method name loc _) -> (name, loc)) <$> methods
+      _ -> return Nothing
+
+noError :: (Monoid w, Functor f) => f a -> f (a, w)
+noError = fmap (, mempty)
+
+withReportEnv :: MonadIO m => (ReportEnv -> m a) -> m (a, [Error])
+withReportEnv f = do
+  errVar <- liftIO $ newMVar []
+  a <- f ReportEnv
+    { _currentLocation = Nothing
+    , _reportAction = \err ->
+      modifyMVar_ errVar $ \errs -> pure $ err:errs
+    }
+  errs <- liftIO $ readMVar errVar
+  return (a, errs)

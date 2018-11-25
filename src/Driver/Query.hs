@@ -21,7 +21,7 @@ import TypeRep
 
 type ModuleDefinitions = HashMap QName (SourceLoc, Unscoped.TopLevelDefinition)
 type ResolvedModule = HashMap (HashSet QName) [(QName, SourceLoc, Closed (Pre.Definition Pre.Expr))]
-type TypeCheckedGroup = HashMap QName (SourceLoc, ClosedDefinition Core.Expr, Biclosed Core.Expr)
+type ElaboratedGroup = HashMap QName (SourceLoc, ClosedDefinition Core.Expr, Biclosed Core.Expr)
 
 data Query a where
   Files :: Query [FilePath]
@@ -34,7 +34,7 @@ data Query a where
   DupCheckedModule :: ModuleName -> Query (HashMap QName (SourceLoc, Unscoped.TopLevelDefinition))
   ModuleExports :: ModuleName -> Query (HashSet QName, HashSet QConstr)
   ResolvedModule :: ModuleName -> Query ResolvedModule
-  TypeCheckedGroup :: HashSet QName -> Query TypeCheckedGroup
+  ElaboratedGroup :: HashSet QName -> Query ElaboratedGroup
   BindingGroup :: QName -> Query (HashSet QName)
 
   Type :: QName -> Query (Biclosed Core.Expr)
@@ -42,9 +42,10 @@ data Query a where
   QConstructor :: QConstr -> Query (Biclosed Core.Expr)
   -- TODO should perhaps be derived?
   ClassMethods :: QName -> Query (Maybe [(Name, SourceLoc)])
+  Instances :: QName -> ModuleName -> Query [(QName, Biclosed Core.Expr)]
+
   ConstrIndex :: QConstr -> Query (Maybe Integer)
 
-  Instances :: QName -> ModuleName -> Query [(QName, Biclosed Core.Expr)]
 
   Signature :: QName -> Query (Maybe (Signature ReturnIndirect))
   ConvertedSignature :: QName -> Query (Maybe Lifted.FunSignature)
