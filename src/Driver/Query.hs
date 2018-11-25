@@ -20,7 +20,7 @@ import qualified Syntax.Sized.Lifted as Lifted
 import TypeRep
 
 type ModuleDefinitions = HashMap QName (SourceLoc, Unscoped.TopLevelDefinition)
-type ResolvedModule = HashMap QName [(QName, SourceLoc, Closed (Pre.Definition Pre.Expr))]
+type ResolvedModule = HashMap (HashSet QName) [(QName, SourceLoc, Closed (Pre.Definition Pre.Expr))]
 type TypeCheckedGroup = HashMap QName (SourceLoc, ClosedDefinition Core.Expr, Biclosed Core.Expr)
 
 data Query a where
@@ -34,7 +34,8 @@ data Query a where
   DupCheckedModule :: ModuleName -> Query (HashMap QName (SourceLoc, Unscoped.TopLevelDefinition))
   ModuleExports :: ModuleName -> Query (HashSet QName, HashSet QConstr)
   ResolvedModule :: ModuleName -> Query ResolvedModule
-  TypeCheckedGroup :: QName -> Query TypeCheckedGroup
+  TypeCheckedGroup :: HashSet QName -> Query TypeCheckedGroup
+  BindingGroup :: QName -> Query (HashSet QName)
 
   Type :: QName -> Query (Biclosed Core.Expr)
   Definition :: QName -> Query (ClosedDefinition Core.Expr)
