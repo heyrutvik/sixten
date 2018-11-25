@@ -161,6 +161,10 @@ rules logEnv_ inputFiles target (Writer query) = case query of
         return $ Just $ (\(Method name loc _) -> (name, loc)) <$> methods
       _ -> return Nothing
 
+  Instances className modulName_ -> Task $ noError $
+    -- instances in this module and all imported modules
+    _
+
   ConstrIndex (QConstr typeName c) -> Task $ noError $ do
     def <- fetchDefinition typeName
     case def of

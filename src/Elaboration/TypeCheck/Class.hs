@@ -119,10 +119,11 @@ desugarClassDef classVar name loc (ClassDef params ms) = do
 
   ==>
 
+  instanceName-f = fbody
+
   instanceName : C a => C [a]
   instanceName =
-    let f = fbody
-    MkC f
+    MkC instanceName-f
 -}
 checkInstance
   :: FreeV

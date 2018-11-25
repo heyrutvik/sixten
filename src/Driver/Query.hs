@@ -42,7 +42,7 @@ data Query a where
   QConstructor :: QConstr -> Query (Biclosed Core.Expr)
   -- TODO should perhaps be derived?
   ClassMethods :: QName -> Query (Maybe [(Name, SourceLoc)])
-  Instances :: QName -> ModuleName -> Query [(QName, Biclosed Core.Expr)]
+  Instances :: QName -> ModuleName -> Query [QName]
 
   ConstrIndex :: QConstr -> Query (Maybe Integer)
 
@@ -60,11 +60,15 @@ fetchDefinition name = openDefinition <$> fetch (Definition name)
 fetchType :: MonadFetch Query m => QName -> m (Core.Type meta v)
 fetchType name = biopen <$> fetch (Type name)
 
+fetchInstances :: MonadFetch Query m => QName -> ModuleName -> m [(QName, Core.Type meta a)]
+fetchInstances className moduleName_ = do
+  instanceNames <- fetch (Instances className moduleName_)
+  forM instanceNames $ \name -> do
+    typ <- fetchType name
+    return (name, typ)
+
 fetchQConstructor :: MonadFetch Query m => QConstr -> m (Core.Type meta v)
 fetchQConstructor qc = biopen <$> fetch (QConstructor qc)
-
-fetchInstances :: MonadFetch Query m => QName -> ModuleName -> m [(QName, Core.Expr meta v)]
-fetchInstances name mname = fmap (fmap biopen) <$> fetch (Instances name mname)
 
 fetchIntRep :: MonadFetch Query m => m TypeRep
 fetchIntRep = TypeRep.intRep <$> fetch Driver.Query.Target
