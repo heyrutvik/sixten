@@ -140,7 +140,7 @@ rules logEnv_ inputFiles target (Writer query) = case query of
   Definition name -> Task $ noError $ do
     bindingGroup <- fetch $ BindingGroup name
     elaboratedGroup <- fetch $ ElaboratedGroup bindingGroup
-    let (_loc, def, _typ) = HashMap.lookupDefault (panic "fetch Type") name elaboratedGroup
+    let (_loc, def, _typ) = HashMap.lookupDefault (panic "fetch Definition") name elaboratedGroup
     return def
 
   QConstructor (QConstr typeName c) -> Task $ noError $ do

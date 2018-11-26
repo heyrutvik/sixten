@@ -49,7 +49,6 @@ data Query a where
 
   ConstrIndex :: QConstr -> Query (Maybe Integer)
 
-
   Signature :: QName -> Query (Maybe (Signature ReturnIndirect))
   ConvertedSignature :: QName -> Query (Maybe Lifted.FunSignature)
 
