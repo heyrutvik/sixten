@@ -161,14 +161,20 @@ rules logEnv_ inputFiles target (Writer query) = case query of
         return $ Just $ (\(Method name loc _) -> (name, loc)) <$> methods
       _ -> return Nothing
 
-  Instances className modulName_ -> Task $ noError $
-    -- instances in this module and all imported modules
-    _
+  Instances moduleName_ -> Task $ noError $ do
+    resolvedModule <- fetch $ ResolvedModule moduleName_
+    let flatModule = concat $ HashMap.elems resolvedModule
+    -- These errors are reported by ResolveNames, so we ignore them here.
+    (res, _errs) <- withReportEnv $ \reportEnv_ ->
+      runVIX logEnv_ reportEnv_ $
+        ResolveNames.instances
+          $ (\(n, loc, Closed def) -> (n, loc, def)) <$> flatModule
+    return res
 
   ConstrIndex (QConstr typeName c) -> Task $ noError $ do
     def <- fetchDefinition typeName
     case def of
-      DataDefinition (DataDef _ constrDefs) _ -> do
+      DataDefinition (DataDef _ constrDefs) _ ->
         case constrDefs of
           [] -> return Nothing
           [_] -> return Nothing

@@ -7,7 +7,10 @@ import Protolude hiding (TypeRep)
 
 import Data.HashMap.Lazy(HashMap)
 import Data.HashSet(HashSet)
+import qualified Data.HashSet as HashSet
 import Rock
+import Util.MultiHashMap(MultiHashMap)
+import qualified Util.MultiHashMap as MultiHashMap
 
 import Backend.Target as Target
 import Error
@@ -42,7 +45,7 @@ data Query a where
   QConstructor :: QConstr -> Query (Biclosed Core.Expr)
   -- TODO should perhaps be derived?
   ClassMethods :: QName -> Query (Maybe [(Name, SourceLoc)])
-  Instances :: QName -> ModuleName -> Query [QName]
+  Instances :: ModuleName -> Query (MultiHashMap QName QName)
 
   ConstrIndex :: QConstr -> Query (Maybe Integer)
 
@@ -62,8 +65,9 @@ fetchType name = biopen <$> fetch (Type name)
 
 fetchInstances :: MonadFetch Query m => QName -> ModuleName -> m [(QName, Core.Type meta a)]
 fetchInstances className moduleName_ = do
-  instanceNames <- fetch (Instances className moduleName_)
-  forM instanceNames $ \name -> do
+  classInstances <- fetch $ Instances moduleName_
+  let instanceNames = MultiHashMap.lookup className classInstances
+  forM (HashSet.toList instanceNames) $ \name -> do
     typ <- fetchType name
     return (name, typ)
 

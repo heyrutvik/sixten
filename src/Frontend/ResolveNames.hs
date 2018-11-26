@@ -84,7 +84,7 @@ resolveModule modul defs = do
   -- class c, add a vertex c -> i, and map the instanceDeps table over all _dependencies_.
   --
   -- We also add a dependency from method to class for all methods
-  instanceDeps <- instances resolvedDefs
+  instanceDeps <- instances $ (\(n, (loc, def), _) -> (n, loc, def)) <$> resolvedDefs
   let methodDeps = methodClasses defs
       addMethodDeps dep
         = maybe (HashSet.singleton dep) (HashSet.insert dep . HashSet.singleton)
@@ -138,12 +138,12 @@ methodClasses contents = HashMap.fromList
   ]
 
 instances
-  :: [(QName, (SourceLoc, Scoped.Definition Scoped.Expr void), a)]
+  :: [(QName, SourceLoc, Scoped.Definition Scoped.Expr void)]
   -> VIX (MultiHashMap QName QName)
-instances defs = fmap (MultiHashMap.fromList . concat) $ forM defs $ \(name, (_, def), _) -> case def of
+instances defs = fmap (MultiHashMap.fromList . concat) $ forM defs $ \(name, _, def) -> case def of
   Scoped.InstanceDefinition (Scoped.InstanceDef typ _) -> do
-    cs <- getClass typ
-    return [(c, name) | c <- cs]
+    mc <- getClass typ
+    return [(c, name) | c <- toList mc]
   _ -> return mempty
 
 importedAliases
@@ -305,13 +305,13 @@ resolvePat pat = case pat of
 
 getClass
   :: Scoped.Expr v
-  -> VIX [QName]
+  -> VIX (Maybe QName)
 getClass (Scoped.Pi _ _ s) = getClass $ fromScope s
 getClass (Scoped.SourceLoc loc e) = located loc $ getClass e
-getClass (Scoped.appsView -> (Scoped.Global g, _)) = return [g]
+getClass (Scoped.appsView -> (Scoped.Global g, _)) = return $ Just g
 getClass _ = do
   reportInvalidInstance
-  return []
+  return Nothing
 
 reportInvalidInstance :: VIX ()
 reportInvalidInstance
