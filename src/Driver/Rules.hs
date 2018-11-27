@@ -162,6 +162,10 @@ rules logEnv_ inputFiles target (Writer query) = case query of
       _ -> return Nothing
 
   Instances moduleName_ -> Task $ noError $ do
+    file <- fetch $ ModuleFile moduleName_
+    moduleHeader_ <- fetchModuleHeader file
+    dependencyInstances <- for (moduleImports moduleHeader_) $ \import_ ->
+      fetch $ Instances $ importModule import_
     resolvedModule <- fetch $ ResolvedModule moduleName_
     let flatModule = concat $ HashMap.elems resolvedModule
     -- These errors are reported by ResolveNames, so we ignore them here.
@@ -169,7 +173,7 @@ rules logEnv_ inputFiles target (Writer query) = case query of
       runVIX logEnv_ reportEnv_ $
         ResolveNames.instances
           $ (\(n, loc, Closed def) -> (n, loc, def)) <$> flatModule
-    return res
+    return $ res <> mconcat dependencyInstances
 
   ConstrIndex (QConstr typeName c) -> Task $ noError $ do
     def <- fetchDefinition typeName
